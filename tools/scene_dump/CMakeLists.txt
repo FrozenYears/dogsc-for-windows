@@ -1,0 +1,4 @@
+add_executable(scene_dump main.cpp)
+target_link_libraries(scene_dump PRIVATE dogsc_core)
+target_compile_definitions(scene_dump PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_compile_features(scene_dump PRIVATE cxx_std_20)
