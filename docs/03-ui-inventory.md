@@ -25,26 +25,40 @@
 
 窗口层级策略集中在一处：`CaptureWindowPresentationPolicy.swift:15-30`（overlay = floating+1、activeRecorder = floating+2）。
 
-SwiftUI 通过 `NSHostingView` / `NSHostingController` 嵌入（28 处），例如 `RecorderPanelInteraction.swift:34`、`RecorderPermissionView.swift:173`。
+补充确认（UI 深度勘察）：
+
+- 唯一的 SwiftUI Scene 是 `Settings { AppSettingsView() }`，声明 `.defaultLaunchBehavior(.suppressed)` / `.restorationBehavior(.disabled)`；**没有 WindowGroup / DocumentGroup**（`DogSCApp.swift:38,46-57`）。主窗口全部由 AppKit 控制器创建。
+- Scene 的 `.commands` 只补三条：设置（⌘,）、首次使用引导、快捷键速查（`DogSCApp.swift:64-83`）。
+- `PermissionDragAssistantWindowController`（`RecorderPermissionView.swift:429`）与 `AppDialogPresenter` / `AppDialogPanel`（`AppDialog.swift:297,482`）也是独立浮窗，上表未单列。
+- 窗口标识常量分散在 6 个文件：`DogSCApp.swift:7`、`CaptureEditorWindows.swift:7`、`CaptureWindowPresentationPolicy.swift:176`、`RecorderPermissionView.swift:4`、`AppSettingsWindowController.swift:14`、`CaptureWindowSelection.swift:62`。
+
+SwiftUI 通过 `NSHostingView` / `NSHostingController` 嵌入（28 处），例如 `RecorderPanelInteraction.swift:34`、`RecorderPermissionView.swift:173`。两个定制子类承担「首次点击即生效」：`EditorFirstMouseHostingView`（`DogSCApp.swift:15-17`）与 `RecorderHostingView`（`RecorderPanelInteraction.swift:34-36`）。
 
 ## 3. 状态与撤销
 
 - `AppModel : ObservableObject`（`AppModel.swift:141`）：相位、录制 URL、设备清单、权限、错误提示等 40+ `@Published`。
 - `EditorStore`（1,423 行）：唯一项目写入入口，所有编辑走 `ProjectCommand` 纯函数；交互期间用 `beginInteraction/updateInteraction/commitInteraction` 分组（`EditorStore.swift:796-940`）。
-- 撤销：单一 `UndoManager`，`attachUndoManager`（`:782`）注册快照，`registerUndo` + `setActionName`（`:1374-1381`）。由于模型是值类型快照，撤销实现极简。
+- 撤销：单一 `UndoManager`，`attachUndoManager`（`:782`）注册快照，`registerUndo` + `setActionName`（`:1374-1381`）。注册的是**整条命令的 inverse**，并同时恢复 `selectionBeforeApply`（`:1370-1390`）；`detachUndoManager` 会 `removeAllActions(withTarget:)` 防止跨项目回放（`:792-798`）。
+- 手势草稿：`EditorInteractionDraft` 保存 `baselineProject` + `previewProject`，拖拽期间只改预览副本（`:236-258`），鼠标松开才提交（`:796-940`）；被新选择打断时按 `.cancel` 丢弃或 `.commit(actionName:)` 提交（`:1393-1409`）。
+- `ProjectReducer.apply` 逐域校验 `before` 是否仍等于当前值，否则抛 `staleState`（`:517-620`）；校验统一走 `ProjectValidator`（`:625-630`）。
+- 撤销提示条：监听 `NSUndoManagerDidUndoChange/RedoChange` 生成 `EditorUndoToast`（`EditorView.swift:472-480`）。
 - `EditorSessionContext`（17.3KB）聚合 store / mediaSession / playbackController / 资源解析器。
 
 ## 4. 本地化
 
 - `AppLocalization`（`AppLocalization.swift:1-66`）：按语言缓存 `Bundle`，`localizedString` 加锁查表；语言切换通过 `ObservationRegistrar.withMutation` 触发所有读取点刷新。
 - 统一入口 `appLocalized(_:)`（`AppPreferences.swift:9-11`），错误文案再由 `appErrorDescription` 映射（`:15-63`）。
+- 查表带 `LocalizedStringCache`（NSLock + dictionary，`AppLocalization.swift:17,170-181`）：时间线拖拽每帧会重复取同几百个 key，缓存是性能必需项，Windows 端不能省。
+- 存储方式：覆盖写应用域 `AppleLanguages`，删除即「跟随系统」（`AppPreferences.swift:346-356`）。
 - 原生菜单/窗口标题另有 `AppWindowLocalization` 与 `AppLanguageBinding`（`AppLocalization.swift:69-120`）。
 
 ## 5. 设计系统
 
 - 颜色/间距：`EditorDesignTokens.swift`（`EditorTheme`，明暗双值 `NSColor` provider，303 处 `NSColor` 使用）。
 - 字体：阿里巴巴普惠体 3 档 OTF，`CTFontManagerRegisterFontsForURL` 进程内注册（`AppTypography.swift:13-38`）。
-- 图标：`AppLineIcon` 自绘 60+ 种线性图标（统一 18pt 网格、圆头圆角，`AppLineIcon.swift:5-40`）；其余用 SF Symbols。
+- 图标：`AppLineIcon.Kind` 约 100 个 case，`Drawing: Shape` 用统一 18pt 网格画 `Path`（`AppLineIcon.swift:6-39`，路径分支自 `:54` 起）；`EditorSymbol` 先查 `EditorSymbolCatalog.kind(for:)` 映射到自绘图标，仅无对应项才落回 `Image(systemName:)`（`EditorSymbol.swift:9-118`）。**因此 Windows 端需要约 100 条 Path 定义，而不是 60 条。**
+- 自定义绘制面清单：工作区点阵（`EditorWorkspaceSurface.swift:162-306`）、画布 `ProjectedScreenShape`（`EditorCanvasInteractionSupport.swift:309`）、裁切柄（`EditorCanvasPreview.swift:1470`）、时间线刻度（`EditorTimelineLayout.swift:1419-1470`）、波形包络（`EditorTimelineMergedWaveform.swift:138`）、缩放包络（`EditorZoomEnvelope.swift:301`）。
+- 任务色板：`EditorConsolePalette` 6 个语义槽 + `EditorConsole.Track` 5 条效果轨色（`EditorInspectorPalette.swift:10-105`），经 `\.consolePalette` 环境键下发。
 - 动效：`RecorderMotion`（弹簧/淡入淡出）与 `SpringMotion`，大量依赖 SwiftUI `withAnimation(completionCriteria:)`（macOS 14+）。
 
 ## 6. 编辑器布局
