@@ -1,6 +1,8 @@
 # Windows 移植最终方案（开工前定稿）
 
 > 基线 commit `567fd6e`（DogSC 0.1.8）。本文件是三轮复审后的收敛结果，取代 `10-plan-r1.md`。所有论断可回溯到 `00`–`03` 基线文档与源码行号。
+>
+> **产品定位：独立的 Windows 软件系统，不做 macOS 工程文件互通**（决议见 `16-open-questions.md` D2）。上游仅作为行为参照与算法来源。
 
 ## 1. 决策摘要
 
@@ -12,7 +14,7 @@
 | 合成 | Direct2D `ID2D1DeviceContext` + 少量 HLSL；预览与导出共用同一 `IFrameCompositor` |
 | 采集 | Windows.Graphics.Capture（显示器/窗口/区域）+ WASAPI（loopback/麦克风）+ Media Foundation SinkWriter |
 | 导出 | Media Foundation SourceReader → 自研时间线调度 → 合成 → SinkWriter |
-| 工程文件 | 复用 `project.json` schema v27，字节级语义兼容 |
+| 工程文件 | 自行定义的 `project.json`（沿用 schema 版本号 23…27 以免分叉），**不与 macOS 互通** |
 | 自动更新 | 首版关闭，并从启动序列移除（`DogSCApp.swift` 的 `startIfEligible()` 对应位置） |
 | 最低系统 | Windows 11 22H2（WGC + HEVC MFT 可用性最低） |
 
@@ -62,9 +64,10 @@
 - 采集：HEVC 原生分辨率 + 硬件优先；H.264 限 4K；禁 B 帧（`ScreenCaptureOutput.swift:295-340`）
 - 分片 10 秒（`ScreenCaptureOutput.swift:265-270`）
 
-### 3.6 跨端共享标识
-- `CursorAssetID` 至少保留 `automatic / systemArrow / touchDot / hidden`（`ZoomAnimation.swift:46-63`）
-- `BackgroundSource` 的 `projectImage/projectVideo` 相对路径语义（`ProjectModel.swift:364-400`）
+### 3.6 内部标识（不承诺跨端互通）
+- `CursorAssetID` 保留 `automatic / systemArrow / touchDot / hidden` 四值以保证本产品语义完整（`ZoomAnimation.swift:46-63`），但不要求与 macOS 逐值对齐
+- `BackgroundSource` 的 `projectImage/projectVideo` 相对路径语义沿用（`ProjectModel.swift:364-400`）；`systemImage/systemVideo` 改为 Windows 绝对路径语义
+- schema 版本号沿用 23…27 以免自造分叉，但**不承诺**与 macOS 工程文件互认（见 `16-open-questions.md` D2）
 
 ## 4. 阶段与并行
 
@@ -84,15 +87,16 @@ M0  核心层 + 对拍工具 + 契约定义（无 UI / 无 GPU）
 
 | 阶段 | 验收方式 | 通过标准 |
 |---|---|---|
-| M0 | 对拍工具：同一 `project.json` + 人造 `pointer.jsonl` → 两端输出 `FrameScene` JSON 转储 | 逐字段差 ≤ 1e-9 |
-| M0 | 撤销/重做与剪辑原语单测 | 与 mac 端行为一致（含错误类型） |
+| M0 | 编解码稳定性：`project.json` 读→写→读，字段级对比 | 往返零差异；未知字段按约定忽略 |
+| M0 | 场景求值快照：固定 `project.json` + 人造 `pointer.jsonl` → `scene-dump` JSON | 与仓内基准快照逐字段差 ≤ 1e-9 |
+| M0 | 剪辑原语单测 | 覆盖 split/trim/move/ripple/retime 的边界与错误类型 |
 | M1 | 录 60 秒 4K60 | 帧率 ≥ 58fps、音画偏差 ≤ 1 帧、PTS 单调 |
-| M1 | 暂停/恢复 | 恢复后时间轴无跳变，与 mac 端同语义 |
-| M2a | 离线渲染单帧 vs mac 端同帧 | PSNR ≥ 40dB（无 3D）/ 38dB（含 3D 透视） |
+| M1 | 暂停/恢复 | 恢复后时间轴无跳变，共享 stop 时间一致 |
+| M1 | 排除语义回归 | 录制时自身窗口/Dock 不出现在成片中（若按 §4.1-1 采用遮挡方案） |
+| M2a | 离屏合成单帧自测 | 与仓内基准 PNG 对比 PSNR ≥ 40dB（无 3D）/ 38dB（含 3D 透视） |
 | M2b | 预览播放 | 60Hz 下掉帧 < 2%，拖动无撕裂 |
-| M3 | 时间线全操作 | 分割/裁切/重排/变速/吸附与 mac 端几何一致 |
-| M4 | 导出 4K60 5 分钟 | 无丢帧、音画同步、文件可被 mac 端打开 |
-| M4 | 工程互通 | mac 打开 Win 工程、Win 打开 mac 工程，双向往返无损 |
+| M3 | 时间线全操作 | 分割/裁切/重排/变速/吸附的几何结果与单测基准一致 |
+| M4 | 导出 4K60 5 分钟 | 无丢帧、音画同步、文件可被本产品重新打开 |
 
 ## 6. 风险与应对
 
@@ -109,13 +113,13 @@ M0  核心层 + 对拍工具 + 契约定义（无 UI / 无 GPU）
 
 ## 7. 开工第一批任务（M0）
 
-1. 建仓 `dogsc-win`，CMake + vcpkg（nlohmann/json、DirectXTK 可选），CI 跑 clang-format + 单测。
+1. 建仓骨架：CMake + vcpkg（nlohmann/json、DirectXTK 可选），CI 跑 clang-format + 单测。
 2. 移植 `OutputFrameSchedule`、`TimelineMap`、`TimelineMediaPlan` 及单测（这三者决定成片帧数与音画同步）。
-3. 移植 `ProjectModel` / `ProjectMediaModel` 的 JSON 读写，用真实 mac 工程文件做往返测试。
-4. 移植 `FrameSceneEvaluator` + `FrameScene`，输出 JSON 转储工具 `scene-dump`。
-5. 写对拍脚本：mac 端同样导出 `scene-dump`，对比脚本按 1e-9 容差报告差异。
-6. 定义 `CursorAssetID` 共享枚举与 `IFrameCompositor` 接口头文件。
-7. 把 `orchestration/` 的三条时序契约写成失败用例（迟到回调、暂停一致性、保存代际），作为后续实现的护栏。
+3. 移植 `ProjectModel` / `ProjectMediaModel` 的 JSON 读写，做「读 → 写 → 读」稳定性测试，并提交一份基准快照。
+4. 移植 `FrameSceneEvaluator` + `FrameScene`，输出 JSON 转储工具 `scene-dump`，生成并提交基准快照（后续回归的对照物）。
+5. 定义 `CursorAssetID` 内部枚举与 `IFrameCompositor` 接口头文件；检索开源光标素材库（CC0/MIT/Apache-2.0，≥6 类，SVG 或 ≥256px），产出候选清单。
+6. 把 `orchestration/` 的三条时序契约写成失败用例（迟到回调、暂停一致性、保存代际），作为后续实现的护栏。
+7. 写一份采集层技术验证清单：WGC 排除语义替代方案、MF passthrough 缺失的下限方案、QPC 四路时钟对齐方案（对应 `02-platform-dependency-map.md` §4.1）。
 
 ## 8. 明确不做（首版）
 

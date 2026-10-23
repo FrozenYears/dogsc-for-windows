@@ -96,14 +96,54 @@
 | `UndoManager` | `EditorStore.swift:782-800` | 自建命令栈（模型已是纯函数，易实现） | 低 |
 | `CryptoKit.SHA256` | `EditorTimelineWaveformCache.swift` | BCrypt | 低 |
 
-## 4. 阻碍点分级
+## 4. 采集层专项映射（逐能力核对）
 
-**A 级（决定项目可行性）**：AVFoundation 全套时间线/编解码（B5/B6/B7）、ScreenCaptureKit 采集质量（B4）、渲染器重写（3.2 全表）。
+| 能力 | macOS 证据 | Windows 等价 | 风险 |
+|---|---|---|---|
+| 显示器枚举/几何 | `CaptureReadiness.swift:26-33`（`NSScreen`+`CGDisplayCopyDisplayMode`） | `EnumDisplayMonitors`/`GetMonitorInfo`/`GetDpiForMonitor` | 低 |
+| 整屏采集 | `ScreenRecorder.swift:101-251`（`SCStream`+`SCContentFilter(display:)`） | WGC `GraphicsCaptureItem`+`Direct3D11CaptureFramePool`，或 DXGI Desktop Duplication | **高** |
+| 单窗口采集 | `ScreenRecorder.swift:157`（`desktopIndependentWindow`） | WGC `CreateForWindow`（受 DWM 裁剪/最小化限制） | 中 |
+| **排除/例外语义** | `CaptureSurfaceFilter.swift:9-39`（`excludingApplications:exceptingWindows:`） | **无直接等价**，需采集后遮挡或逐窗口合成 | **高** |
+| 原生直写 | `NativeScreenRecording.swift:127-183`（`SCRecordingOutput`） | MF `IMFSinkWriter` + H.264/HEVC MFT | 中 |
+| 采集面参数 | `ScreenRecorder.swift:216-244`（NV12 videoRange + sRGB + 709 + `.SDR`、`showsCursor=false`） | WGC 帧为 BGRA；需显式转 NV12 并自行保证色彩标签 | 中 |
+| 无音频同流 | `ScreenRecorder.swift:247-250`（`capturesAudio=false`，否则 `startCapture()` 挂起） | 无此限制，但建议同样分离，便于独立降级 | 低 |
+| 采样与队列深度 | `CaptureStreamCadence.swift:12-30`（`minimumFrameInterval=1/60`、`queueDepth=8`） | WGC `FramePool` 缓冲数 + 自行丢帧；无帧率参数 | 中 |
+| **录制中热切换采集项** | `ScreenRecorder.swift:635,664`（`stream.updateContentFilter`） | WGC 不支持中途换 item，只能停流重开（产生帧空洞） | **高** |
+| 系统声音 | `CoreAudioSystemAudioTap.swift:73-190`（进程 Tap，可排除自身/按 app 过滤） | WASAPI loopback（整机）；或 Win10 2004+ Process Loopback | 中 |
+| 麦克风 | `MicrophoneRecorder.swift:8-19`（`AVCaptureSession`+`AVCaptureAudioDataOutput`） | WASAPI capture / MF Source Reader | 低 |
+| 摄像头 | `CameraRecorder.swift:18,66-76`（`AVCaptureSession`+`AVCaptureVideoDataOutput`，NV12，H.264 20Mbps） | MF Source Reader / WinRT MediaCapture | 中 |
+| 摄像头帧归一化 | `CameraSampleWriterFrameNormalizer.swift:18-170`（`VTPixelTransferSession`，`kVTScalingMode_Trim`） | D3D11 Video Processor / `MFCreateVideoProcessor` | 低 |
+| 摄像头格式协商 | `CameraCaptureFormatSelector.swift:6-38`、`CameraCaptureDeviceConfigurator.swift:44-70`（不固定 FPS） | MF `GetNativeMediaType` 枚举 + 手动选择 | 中 |
+| 鼠标事件 | `PointerEventRecorder.swift:405-420`（`CGEvent.tapCreate`，listenOnly，专属线程） | `SetWindowsHookEx(WH_MOUSE_LL)` 或 Raw Input | 中 |
+| 事件采样率 | `PointerEventRecorder.swift:286-293,512-513`（240Hz 上限、关闭鼠标合并） | 低级钩子本身无合并；需自行限流 | 低 |
+| 光标形状 | `PointerEventRecorder.swift:585-590`（30Hz 轮询 `NSCursor.currentSystem`） | `GetCursorInfo`+`GetIconInfo` | 低 |
+| **多段拼接** | `NativeScreenRecording.swift:931-997`（`AVAssetExportSession` passthrough） | MF topology 拼接（需重编码）或外部 ffmpeg | 中 |
+| **独立音轨封装** | `NativeScreenRecording.swift:1003-1075`（`AVMutableComposition` passthrough，按 host 时钟正偏移延后/负偏移裁头） | MF Sink Writer（重编码）或 ffmpeg `-c copy` | **高** |
+| 统一 host 时钟 | `CaptureRecordingSupport.swift:145-165`（`CMSyncConvertTime` 转到 `CMClockGetHostTimeClock`） | 自建 QPC 基准统一 WASAPI/MF/摄像头/鼠标四路时间戳 | 中 |
+| 黑边检测 | `CameraLetterboxAnalysis.swift:74-200`（`AVAssetImageGenerator` 采 9 帧聚类取中位） | MF Source Reader 抽帧 + 同算法 | 低 |
+| 热插拔 | `CaptureDeviceLifecycle.swift:100-120` | `WM_DEVICECHANGE`+`IMMNotificationClient` | 低 |
+| 性能保障 | `CaptureStreamCadence.swift:34-40`（`ProcessInfo.beginActivity`） | `SetThreadExecutionState`+`AvSetMmThreadCharacteristics` | 低 |
+| 权限 | `AppModel.swift:192`、`CaptureReadiness.swift:111`（TCC） | 无 TCC；麦克风/摄像头走隐私设置，屏幕采集只需用户确认 | 低 |
 
-**B 级（影响功能完整度，可裁剪）**：系统光标（B1）、系统壁纸（B2）、进程级系统声音（B3）、iOS 设备录制、Sparkle。
+### 4.1 采集层硬阻塞清单（逐条验证）
 
-**C 级（工作量确定，风险低）**：几何类型、偏好存储、本地化、图标自绘、字体加载。
+1. **排除语义**：`SCContentFilter` 可同时排除自身应用、Dock、Finder 桌面图标，并保留编辑器窗口例外（`CaptureSurfaceFilter.swift:9-39`）。Windows 侧无等价 API，只能采集后遮挡或逐窗口合成，性能与正确性均退化。
+2. **原生直写 5K HEVC**：`SCRecordingOutput` 由系统直接写盘（`NativeScreenRecording.swift:127-183`）。需重建 D3D11 纹理 → MF 编码器零拷贝链路。
+3. **按 app 过滤系统声音**：`CATapDescription(stereoMixdownOfProcesses:)`（`CoreAudioSystemAudioTap.swift:78-90`）。老 WASAPI loopback 只能整机混音；已决议首版降级为整机 loopback。
+4. **passthrough 拼接与 mux**：`concatenate`（`NativeScreenRecording.swift:931-997`）与 `muxSystemAudio`（`:1003-1075`）都依赖 `AVAssetExportSession` passthrough，不重编码。MF 下需重编码；不接受 ffmpeg 外部依赖则成本显著上升。
+5. **录制中热切换采集项**：`stream.updateContentFilter(filter)`（`ScreenRecorder.swift:635,664`）让编辑器窗口可自由开关、选区可切换。WGC 不支持中途换采集项。
+6. **统一 host clock**：`CMSyncConvertTime(..., to: CMClockGetHostTimeClock())`（`CaptureRecordingSupport.swift:145-165`）依赖 macOS 单一 host clock。Windows 需自建 QPC 基准统一四路时间戳，且需处理各源启动偏移。
+7. **权限模型差异**：Accessibility 是 `CGEventTap` 的硬前提（`PointerEventRecorder.swift:405`）。Windows 低级钩子无需授权，但易被安全软件静默拦截，需设计 Raw Input 降级路径。
+8. **硬件编码强约束**：macOS 侧「宁可失败不软编」（`ScreenCaptureOutput.swift:340-355`）与 H.264 4096×2304 上限（`ScreenRecorder.swift:189-194`）在 Windows 多 GPU 场景会放大不可录范围，需按厂商能力重定策略。
 
-## 5. 不受影响的部分
+## 5. 阻碍点分级
 
-`RecorderCore` 24k 行零平台依赖（见 `01-data-model-and-timeline.md`），可直接作为移植期「行为金标准」：同一份 `project.json` 在两端求值必须得到相同 `FrameScene` 数值。
+**A 级（决定项目可行性）**：AVFoundation 全套时间线/编解码（B5/B6/B7）、ScreenCaptureKit 采集质量（B4）、渲染器重写（3.2 全表）；采集层另有 4 项硬阻塞（4.1 的第 1/2/4/5 条）。
+
+**B 级（影响功能完整度，可裁剪）**：系统光标（B1）、系统壁纸（B2）、进程级系统声音（B3）、iOS 设备录制、Sparkle、采集项热切换。
+
+**C 级（工作量确定，风险低）**：几何类型、偏好存储、本地化、图标自绘、字体加载、显示器枚举、设备热插拔。
+
+## 6. 不受影响的部分
+
+`RecorderCore` 44 个文件 / 15,369 行零平台依赖（见 `01-data-model-and-timeline.md`）：全部只 `import Foundation`，对 `CG*` 类型引用为 0。同一份 `project.json` 求值必须得到相同的 `FrameScene` 数值。
