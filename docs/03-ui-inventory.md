@@ -88,7 +88,7 @@ SwiftUI 通过 `NSHostingView` / `NSHostingController` 嵌入（28 处），例�
 |---|---|---|
 | **声明式视图**（约 236 个 View） | 纯 SwiftUI 布局、状态绑定、动画 | 需整体重写为目标框架的声明式或即时模式 UI；布局语义（`Spacer`/`GeometryReader`/`matchedGeometryEffect`）需逐处等价 |
 | **自绘交互层** | 画布叠加拖拽、裁切手柄、时间线拖拽/吸附/框选（`EditorCanvasOverlayInteraction.swift` 36KB、`EditorTimelineInteraction.swift` 32KB） | 手势逻辑与数学在 `RecorderCore` 已有，可复用；命中测试与坐标需重写 |
-| **AppKit 窗口语义** | 浮动层级、无边框、`ignoresMouseEvents`、跨 Space、全屏辅助 | 需 Win32 顶层窗口 + 自管 Z 序；多显示器与 DPI 语义不同 |
+| **AppKit 窗口语义** | 浮动层级、无边框、`ignoresMouseEvents`、跨 Space、全屏辅助 | 需 Win32 顶层窗口 + 自管 Z 序；多显示器与 DPI 语义不同。**透明/穿透不能靠 WinUI 3 实现**：`SetLayeredWindowAttributes(LWA_COLORKEY)` 对 WinUI 3 窗口按设计无效（microsoft-ui-xaml#8469），`SwapChainPanel` 属 external content 不支持透明（`visual-layer` 文档），`IsAlwaysOnTop = true` 时点击穿透有已知缺陷（castorix#5）→ HUD 一律 Win32 自绘 |
 | **事件监视** | 22 处 `NSEvent` 本地/全局监视（时间线缩放、滚轮、修饰键、删除键） | 需全局/局部钩子或框架级输入事件 |
 | **自绘图标系统** | 60+ 矢量路径 | 需重绘为 SVG/Path 资源，工作量确定但量大 |
 | **字体** | 阿里巴巴普惠体 OTF | 可直接随包分发，WPF/WinUI3 均可加载 |

@@ -8,7 +8,7 @@
 |---|---|---|---|
 | D1 | 仓库策略 | 新建 `dogsc-win` 目录，含文档骨架 + Windows 源码，推送至 `FrozenYears/dogsc-for-windows` | 与 macOS 源码分离，避免两套构建体系混杂 |
 | D2 | 跨端工程互通 | **不做**。Windows 端是独立软件系统 | 产品定位为纯 Windows 软件，互通会增加 M0 的对拍与共享枚举约束 |
-| D3 | 首版平台门槛 | Windows 11 24H2（build 26100+） | 原定 22H2；因 `SetWindowExclusionList`、`MinUpdateInterval`、`IncludeSecondaryWindows` 等 WGC 能力均在 26100+ 才稳定提供，提升门槛可去掉大量降级分支 |
+| D3 | 首版平台门槛 | Windows 11 24H2（build 26100+） | 原定 22H2；因 `SetWindowExclusionList`、`MinUpdateInterval`、`IncludeSecondaryWindows` 等 WGC 能力均在 26100+ 才稳定提供，提升门槛可去掉大量降级分支。**补充**：这些能力的接口编号随 SDK 漂移（`IGraphicsCaptureSession3` → 更高），运行时必须用 `ApiInformation` + QI 探测，不得按接口编号或 SDK 版本硬判，见 D11-5 |
 | D4 | 系统声音 | 默认整设备 loopback；「所选窗口 App」作为可选能力预留 | 进程级捕获已可用（`ActivateAudioInterfaceAsync` + `AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS`，Win10 20348+），与 mac 的 `CATapDescription` 能力相当；首版仍以整机 loopback 为默认路径，进程级在 M1 后评估 |
 | D5 | iOS 设备录制 | 首版移除 | 需私有投屏协议；UI 隐藏入口，`CaptureConfiguration` 字段保留但不可选 |
 | D6 | 光标素材 | 先做 MVP：广泛检索开源图标库，选用许可允许的光标素材；不可行再考虑 AI 生成，优先级滞后 | 避免在素材环节阻塞主功能 |
@@ -53,6 +53,55 @@ Media Foundation 官方文档明确支持 remux 不重编码：`IMFSinkWriter` �
 | 进程级系统声音在 Windows 不可得 | **可得**：`ActivateAudioInterfaceAsync` + `AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS`（Win10 20348+），可按进程树包含/排除，与 mac 的 `CATapDescription` 能力相当 |
 | D2D 透视需自写 HLSL | **不必须**：`CLSID_D2D13DTransform`（任意 4x4 矩阵）与 `CLSID_D2D13DPerspectiveTransform` 均为内置 effect，可覆盖现有单应矩阵需求 |
 | 系统声音只能整机 loopback | 见上，进程级也可得；整机 loopback 仍是默认路径 |
+
+## D11 第二轮检索复核（2026-10-23）
+
+对前一轮遗留的「Windows 上没有 XXX」类断言做二次检索。结论分三类：**维持**、**修正**、**需实测**。
+
+### 维持
+
+| 断言 | 复核结果 | 来源 |
+|---|---|---|
+| QPC 作为唯一时钟基准 | 维持。WGC 帧的 `Direct3D11CaptureFrame.SystemRelativeTime` 本身就是「合成器渲染该帧时的 QPC 时刻」，与 `QueryPerformanceCounter` 同源，四路对齐可行 | <https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframe.systemrelativetime> |
+| 进程级系统声音可得 | 维持。`AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS` + `VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK` 经 `ActivateAudioInterfaceAsync` 激活，可按进程树 include/exclude | <https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params> |
+| D2D 有内置 3D / 透视变换 | 维持，可强化。`CLSID_D2D13DTransform` 支持任意 4x4 矩阵，最低 Windows 8 + Platform Update（即 Windows 10+ 全支持） | <https://learn.microsoft.com/en-us/windows/win32/direct2d/3d-transform> |
+| 光标是否入镜可程序控制 | 维持。`GraphicsCaptureSession.IsCursorCaptureEnabled`，Win10 2004（19041+）起可用 | <https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.iscursorcaptureenabled> |
+| HUD 不适合走 XAML Island 透明 | 维持，但**理由要改**。原文隐含「做不到」；实际是「WinUI 3 的 XAML Island / SwapChainPanel 透明与点击穿透在合成层上不可靠」——`SetLayeredWindowAttributes(LWA_COLORKEY)` 对 WinUI 3 窗口无效（按设计拒绝），`SwapChainPanel` 被明确定义为 external content 不支持透明，且 `IsAlwaysOnTop = true` 时点击穿透存在已知缺陷 | <https://github.com/microsoft/microsoft-ui-xaml/issues/2956>、<https://github.com/microsoft/microsoft-ui-xaml/issues/8469>、<https://learn.microsoft.com/en-us/windows/apps/develop/composition/visual-layer>、<https://github.com/castorix/WinUI3_SwapChainPanel_Layered/issues/5> |
+| 离屏合成可在 WARP 上跑 | 维持，可强化。MS 文档明确建议「需要保证中间纹理精度时用 `D3D_DRIVER_TYPE_WARP`」，`ID2D1DeviceContext::IsBufferPrecisionSupported` + `SetRenderingControls` 控制精度 | <https://learn.microsoft.com/en-us/windows/win32/direct2d/precision-and-clipping-in-effect-graphs> |
+
+### 修正
+
+1. **D2D `GaussianBlur` 会扩大输出 extent**。半径换算约 `StandardDeviation × 3`，输出尺寸在每边增加 `StandardDeviation × 3 × (DPI/96)`，即总尺寸增加 `StandardDeviation × 6 × (DPI/96)`，并有 `BORDER_MODE`（soft / hard）控制边缘处理。
+   - 影响：`02` §3.2 第 3 行「需手工中间纹理尺寸」的判断**被证实**，并给出了可直接用于实现的公式。
+   - 参考：<https://learn.microsoft.com/en-us/windows/win32/direct2d/gaussian-blur>
+
+2. **HEVC 编码依赖 Store 扩展，离线部署是真实阻碍**。`mfh265enc.dll` 由 Microsoft.HEVCVideoExtension（Store 包）提供；从未安装过该包的离线机器在 MF 初始化时因联网许可失败返回 `0x800704CF` / `0x80072EE7`。一旦成功授权，卸载后许可状态仍保留。
+   - 影响：`15` 的 R3 只写「运行时探测 + 回退 H.264」，不够；需补「离线机器上 HEVC 编码**可能完全不可用**，安装包需引导或内置扩展部署路径」。
+   - `[INFERENCE]` 硬件编码器（Intel/NVIDIA/AMD 的 HEVC MFT）不依赖该 Store 包；`MFTEnumEx` + `MFT_ENUM_FLAG_HARDWARE` 可优先选中它们。需 M1 实测确认。
+   - 参考：<https://learn.microsoft.com/en-us/windows/win32/medfound/h-265---hevc-video-encoder>、<https://stackoverflow.com/questions/78082351/media-foundation-cannot-initialise-transform-cannot-connect-to-windows-update>、<https://www.simonmourier.com/blog/Media-Foundation-cannot-initialise-H-265-HEVC-Video-Decoder-transform-cannot-con/>
+
+3. **WGC 支持 HDR**，原文未提。`Direct3D11CaptureFramePool` 可用 `DXGI_FORMAT_R16G16B16A16_FLOAT` 避免高光裁切；`IDXGIOutput5::DuplicateOutput1` 可无损抓 HDR。
+   - 影响：结论（首版不做 HDR）仍成立，理由改为「macOS 端本就仅 SDR，产品范围不含 HDR」，而非「Windows 做不到」。
+   - 参考：<https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture>、<https://learn.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range>
+
+4. **D2D 无内置 squircle**。`D2D1_ROUNDED_RECT` 的四角是四分之一**椭圆**，不支持连续圆角；连续圆角必须用 `ID2D1PathGeometry` + `ID2D1GeometrySink::AddBezier` 自绘。
+   - 影响：`02` §3.2「自算 superellipse 路径 → 遮罩纹理」方向正确，补明「不能用 `DrawRoundedRectangle`」。
+   - 参考：<https://learn.microsoft.com/en-us/windows/win32/api/d2d1/ns-d2d1-d2d1_rounded_rect>、<https://learn.microsoft.com/en-us/windows/win32/direct2d/how-to-draw-and-fill-a-complex-shape>
+
+5. **接口编号会随 SDK 漂移**。`IGraphicsCaptureSession3`（含 `MinUpdateInterval`）在 26100 引入；全新 SDK 中存在 `IGraphicsCaptureSession7` 等更高编号。
+   - 影响：D3 的「24H2 提供」需补充「**运行时用 `ApiInformation` + `QueryInterface` 探测能力，不按接口编号硬编码**」，否则升级 SDK 会误判。
+   - 参考：<https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.minupdateinterval?view=winrt-28000>
+
+6. **`WDA_EXCLUDEFROMCAPTURE` 有版本语义差异**。Win10 19041+ 起为透明排除；更早版本等同 `WDA_MONITOR`（黑块）。24H2 对 `DXGI_SWAP_CHAIN_FLAG_HW_PROTECTED` 交换链的捕获行为又有变化（捕获 API 返回全黑）。
+   - 影响：D8 的降级路径必须写明「受保护窗口在 24H2 上会被捕获为黑块，这是 OS 行为，非本产品缺陷」；`SetWindowExclusionList` 对受保护窗口同样无能为力。
+   - 参考：<https://github.com/microsoft/Windows.UI.Composition-Win32-Samples/issues/64>、<https://learn.microsoft.com/en-nz/answers/questions/5548731/directcomposition-hw-protected-swap-chain-capture>
+
+### 需实测
+
+- `[INFERENCE]` `SetWindowExclusionList` 对 UWP 窗口、XAML Island 窗口的实际生效范围。
+- `[INFERENCE]` 厂商 HEVC 硬件 MFT 在无 Store 扩展的干净系统上是否仍可枚举并编码（决定 R3 的严重程度）。
+- `[INFERENCE]` WGC 窗口采集在窗口最小化/被遮挡时是否仍产出内容（影响「窗口采集」的用户预期说明）。
+- `[INFERENCE]` D2D effect graph 在 5K 分辨率、多层 blur 下的显存峰值与 WARP 回退耗时。
 
 ## D2 的连带影响
 

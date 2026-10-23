@@ -50,10 +50,10 @@
 | macOS | 位置 | Windows | 风险 |
 |---|---|---|---|
 | `CIImage` / `CIFilter`（14 种） | `SharedFrameRenderer.swift` 等 228 处 | D2D `ID2D1Effect`（GaussianBlur/Composite/ColorMatrix/AffineTransform2D/Tile/Border/Flood）或自写 HLSL | 高 |
-| `CIPerspectiveTransformWithExtent` | `SharedFrameRenderer.swift:1603-1630` | D2D `3DTransform` effect 或自写透视 pass | 高 |
-| `CIGaussianBlur` + extent 裁剪语义 | `SharedFrameRenderer.swift:2080-2102` | `GaussianBlur` effect + 手工中间纹理尺寸 | 高 |
+| `CIPerspectiveTransformWithExtent` | `SharedFrameRenderer.swift:1603-1630` | D2D **内置** `3DTransform`（`CLSID_D2D13DTransform`，任意 4x4 矩阵，Win8+ 即有）或 `PerspectiveTransform`（`CLSID_D2D13DPerspectiveTransform`）；无需自写 HLSL | 中 |
+| `CIGaussianBlur` + extent 裁剪语义 | `SharedFrameRenderer.swift:2080-2102` | D2D `GaussianBlur` effect。**注意：D2D 会扩大输出 extent**，半径约 `StandardDeviation × 3`，输出每边外扩 `StandardDeviation × 3 × (DPI/96)`，即总尺寸增加 `StandardDeviation × 6 × (DPI/96)`；用 `BORDER_MODE`（soft/hard）控制边缘。必须按此公式显式分配中间纹理 | 高 |
 | `CIBlendWithMask` / `CISourceOutCompositing` | 16 处 / 3 处 | `Composite`(DestinationIn / SourceOut) | 中 |
-| `CIRoundedRectangleGenerator` + `RoundedRectangle(.continuous)` | `ContinuousCornerMask.swift:72-174` | 自算 superellipse 路径 -> 遮罩纹理 | 中高 |
+| `CIRoundedRectangleGenerator` + `RoundedRectangle(.continuous)` | `ContinuousCornerMask.swift:72-174` | D2D **无内置 squircle**：`D2D1_ROUNDED_RECT` 只是四分之一椭圆角，连续圆角必须用 `ID2D1PathGeometry` + `ID2D1GeometrySink::AddBezier` 自算 superellipse → 遮罩纹理 | 中高 |
 | `CIAffineTile` / 图案 | `SharedFrameRenderer.swift:1767-1805` | `Tile` effect / `ID2D1BitmapBrush` | 低 |
 | `CoreText` 光栅化 chrome 标题 | `SharedFrameRenderer.swift:1144-1172` | DirectWrite `IDWriteTextLayout` -> bitmap | 中 |
 | `CIContext(mtlCommandQueue:)` + `CIRenderDestination(mtlTexture:)` | `SharedPreviewRenderPipeline.swift:60-130` | `ID2D1DeviceContext` + D3D11/DXGI 目标纹理 | 中 |
@@ -69,7 +69,7 @@
 | `AVURLAsset` / `AVAssetTrack` 元数据 | `MediaAnalysis.swift:198-259` | `IMFSourceReader::GetNativeMediaType` 或 `MFGetAttributeSize` | 中 |
 | `AVAssetReader` + `TrackOutput` | `DirectExportPipeline.swift:150-230` | `IMFSourceReader`（可设 DXVA 解码） | 中 |
 | `AVAssetWriter` + `PixelBufferAdaptor` | `DirectExportPipeline.swift:243-296` | `IMFSinkWriter` + `MFCreateVideoSampleFromSurface` | 中高 |
-| HEVC/H.264 硬件编码 | `DirectExportPipeline.swift:11-13, 270-273` | `MFVideoFormat_HEVC`（需 HEVC Video Extensions 或厂商 MFT） | 中高 |
+| HEVC/H.264 硬件编码 | `DirectExportPipeline.swift:11-13, 270-273` | `MFVideoFormat_HEVC`。**软件编码器 `mfh265enc.dll` 由 Store 包 Microsoft.HEVCVideoExtension 提供**，从未装过该包的离线机器首次初始化会因联网许可失败返回 `0x800704CF`；厂商硬件 MFT（`MFTEnumEx` + `MFT_ENUM_FLAG_HARDWARE`）不依赖该包 | 中高 |
 | `AVMutableComposition` | `TimelineCompositionBuilder.swift` | 无；自建切片调度 | 高 |
 | `AVAudioMix` + MTAudioProcessingTap | `TimelineAudioGainProcessor.swift` | 自混 PCM | 中高 |
 | `AVAssetExportSession`（纯音频） | `AudioOnlyExportPipeline.swift` | `IMFSinkWriter` AAC | 低 |
@@ -101,9 +101,9 @@
 | 能力 | macOS 证据 | Windows 等价 | 风险 |
 |---|---|---|---|
 | 显示器枚举/几何 | `CaptureReadiness.swift:26-33`（`NSScreen`+`CGDisplayCopyDisplayMode`） | `EnumDisplayMonitors`/`GetMonitorInfo`/`GetDpiForMonitor` | 低 |
-| 整屏采集 | `ScreenRecorder.swift:101-251`（`SCStream`+`SCContentFilter(display:)`） | WGC `GraphicsCaptureItem`+`Direct3D11CaptureFramePool`，或 DXGI Desktop Duplication | **高** |
+| 整屏采集 | `ScreenRecorder.swift:101-251`（`SCStream`+`SCContentFilter(display:)`） | WGC `GraphicsCaptureItem`+`Direct3D11CaptureFramePool`，或 DXGI Desktop Duplication。**WGC 支持 HDR**（`DXGI_FORMAT_R16G16B16A16_FLOAT` 可免高光裁切），首版不做 HDR 是产品范围决定，非平台限制 | **高** |
 | 单窗口采集 | `ScreenRecorder.swift:157`（`desktopIndependentWindow`） | WGC `CreateForWindow`（受 DWM 裁剪/最小化限制） | 中 |
-| **排除/例外语义** | `CaptureSurfaceFilter.swift:9-39`（`excludingApplications:exceptingWindows:`） | **无直接等价**，需采集后遮挡或逐窗口合成 | **高** |
+| **排除/例外语义** | `CaptureSurfaceFilter.swift:9-39`（`excludingApplications:exceptingWindows:`） | 主路径 `IDisplayGraphicsCaptureSession.SetWindowExclusionList`（24H2+，按 `WindowId` 单会话排除）；旧 build 降级为采集后遮挡。**受保护窗口例外**：`WDA_EXCLUDEFROMCAPTURE` 在 19041+ 为透明排除、更早为黑块；24H2 对 `DXGI_SWAP_CHAIN_FLAG_HW_PROTECTED` 交换链的捕获返回全黑，属 OS 行为 | 中 |
 | 原生直写 | `NativeScreenRecording.swift:127-183`（`SCRecordingOutput`） | MF `IMFSinkWriter` + H.264/HEVC MFT | 中 |
 | 采集面参数 | `ScreenRecorder.swift:216-244`（NV12 videoRange + sRGB + 709 + `.SDR`、`showsCursor=false`） | WGC 帧为 BGRA；需显式转 NV12 并自行保证色彩标签 | 中 |
 | 无音频同流 | `ScreenRecorder.swift:247-250`（`capturesAudio=false`，否则 `startCapture()` 挂起） | 无此限制，但建议同样分离，便于独立降级 | 低 |
