@@ -9,6 +9,7 @@
 #include "dogsc/cursor_asset.hpp"
 #include "dogsc/frame_scene_evaluator.hpp"
 #include "dogsc/project_timeline.hpp"
+#include "dogsc/media_timeline.hpp"
 #include "dogsc/timeline_map.hpp"
 
 namespace dogsc {
@@ -270,6 +271,16 @@ struct ZoomClip {
     [[nodiscard]] TimeInterval effect_end_time() const { return end_time + exit_duration; }
 };
 
+// 屏幕引用是完整工程的必需项；未录制工程不创建部分清单。
+struct ProjectMediaManifest {
+    ProjectMediaReference screen;
+    std::optional<ProjectMediaReference> camera;
+    std::optional<ProjectMediaReference> microphone;
+    std::optional<ProjectMediaReference> pointer_events;
+
+    bool operator==(const ProjectMediaManifest&) const = default;
+};
+
 /// 工程的完整持久化形态。
 struct RecorderProject {
     int version = ProjectSchema::kCurrentVersion;
@@ -286,6 +297,7 @@ struct RecorderProject {
     SourceSequence source_sequence{};
     std::vector<ZoomClip> zoom_clips;
     std::vector<RecordingMarker> recording_markers{};
+    std::optional<ProjectMediaManifest> media;
 
     bool operator==(const RecorderProject&) const = default;
 };

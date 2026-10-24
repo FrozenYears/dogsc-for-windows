@@ -15,6 +15,7 @@
 | D7 | 多段拼接 + 独立音轨封装 | **MF remux 为主路径**（`IMFSinkWriter` 压缩输入 + 相同压缩输出，或 H.264/AVC Remux MFT）；ffmpeg 降为兜底可选项（LGPL 动态链接），仅在 MF 无法处理时启用 | MF 官方支持 remux 不重编码；ffmpeg 仅在异常容器/非标准样本时兜底，减小分发体积与合规面 |
 | D8 | 采集排除语义 | **`SetWindowExclusionList` 为主**（Win11 24H2+，按 `WindowId` 在单会话内排除）；旧 build 降级为采集后遮挡回填 | 24H2 起有官方 per-session 排除接口，无需逐帧回填；遮挡仅作降级 |
 | D9 | 四路时钟基准 | **QPC 为唯一基准**，各源启动时记录 QPC 偏移 | 与 mac 端 `CMSyncConvertTime` 语义最接近，实现清晰；WASAPI device position 长期存在漂移 |
+| D12 | HEVC 崩溃恢复封装 | HEVC 使用约 10 秒独立普通 MP4 分段，停止时经 Media Foundation 压缩样本直通无损合并；保留完整分段恢复入口 | 本机 NVIDIA HEVC MFT 可输出普通 MP4，但 `MFCreateFMPEG4MediaSink` 拒绝 HEVC；原生分段 + MF remux 不加外部库。已实测 12 秒 HEVC Main 2560×1600@60 + AAC 分为 10s/2s 两段并无损合并、恢复文件可解码；跨设备/驱动仍需验证 |
 
 ## D7–D9 的后续核查要求
 

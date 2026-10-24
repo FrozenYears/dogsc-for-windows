@@ -6,10 +6,10 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 ## 状态
 
-**规划阶段完成，尚未开工。**
+**移植进行中；核心逻辑 M0 已完成，Windows 原生采集 M1 正在实现。**
 
-- 已完成：macOS 现状基线梳理、平台依赖与阻碍点识别、架构规划、三轮自我复审。
-- 未开始：任何 Windows 代码。
+- 已完成：平台调研与方案；核心时间线/JSON/场景求值；WGC 屏幕与窗口采集、WASAPI 音频、全局指针轨、可选 MF 摄像头、硬件编码探针、十秒分段和 MF 无损合并/恢复（M1 仍需长时和跨硬件验收）。
+- 尚未完成：WinUI 3 编辑器、D2D 合成/预览、完整编辑/导出工作流、长时 4K60 及跨设备/权限回归。
 
 ## 决策基线
 
@@ -21,7 +21,7 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 | 合成 | Direct2D + 少量 HLSL，预览与导出共用 `IFrameCompositor` |
 | 采集 | Windows.Graphics.Capture + WASAPI + Media Foundation SinkWriter |
 | 导出 | Media Foundation SourceReader → 自研时间线调度 → 合成 → SinkWriter |
-| 最低系统 | Windows 11 22H2 |
+| 最低系统 | Windows 11 24H2（build 26100+） |
 | 工程互通 | **不做**，Windows 端为独立软件系统 |
 | 自动更新 | 首版关闭 |
 | 系统声音 | 仅整设备 loopback |

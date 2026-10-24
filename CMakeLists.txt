@@ -17,6 +17,11 @@ add_subdirectory(src/core)
 
 add_subdirectory(tools/scene_dump)
 
+if(WIN32)
+    add_subdirectory(src/capture)
+    add_subdirectory(tools/capture_cli)
+endif()
+
 if(DOGSC_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

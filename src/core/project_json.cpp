@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 #include <nlohmann/json.hpp>
 
@@ -512,6 +513,47 @@ json encode_zoom_clip(const ZoomClip& clip) {
 }
 
 
+ProjectMediaReference decode_media_reference(const json& node) {
+    ProjectMediaReference reference;
+    reference.relative_path = node.at("relativePath").get<std::string>();
+    reference.start_offset = std::max(finite_or(node, "startOffset", 0), 0.0);
+    reference.source_start_time = std::max(finite_or(node, "sourceStartTime", 0), 0.0);
+    const auto scale = finite_or(node, "sourceTimeScale", 0);
+    if (scale > 0) reference.source_time_scale = scale;
+    const auto end = finite_or(node, "sourceEndTime", -1);
+    if (end >= 0) reference.source_end_time = end;
+    if (node.contains("syncAnchors") && node.at("syncAnchors").is_array()) {
+        for (const auto& value : node.at("syncAnchors")) {
+            if (!value.is_object()) continue;
+            MediaSyncAnchor anchor;
+            if (const auto id = Uuid::parse(string_or(value, "id", ""))) anchor.id = *id;
+            anchor.source_time = std::max(finite_or(value, "sourceTime", 0), 0.0);
+            anchor.offset = std::clamp(finite_or(value, "offset", 0), -10.0, 10.0);
+            reference.sync_anchors.push_back(anchor);
+        }
+        std::sort(reference.sync_anchors.begin(), reference.sync_anchors.end(),
+            [](const auto& left, const auto& right) {
+                if (left.source_time != right.source_time) return left.source_time < right.source_time;
+                return left.id.to_string() < right.id.to_string();
+            });
+    }
+    return reference;
+}
+
+json encode_media_reference(const ProjectMediaReference& reference) {
+    json result{{"relativePath", reference.relative_path},
+                {"startOffset", reference.start_offset},
+                {"sourceStartTime", reference.source_start_time}};
+    if (reference.source_time_scale) result["sourceTimeScale"] = *reference.source_time_scale;
+    if (reference.source_end_time) result["sourceEndTime"] = *reference.source_end_time;
+    result["syncAnchors"] = json::array();
+    for (const auto& anchor : reference.sync_anchors) {
+        result["syncAnchors"].push_back(json{{"id", anchor.id.to_string()},
+            {"sourceTime", anchor.source_time}, {"offset", anchor.offset}});
+    }
+    return result;
+}
+
 }  // namespace
 
 bool ProjectJson::decode(const std::string& text, RecorderProject& out, ProjectJsonError& error) {
@@ -681,6 +723,32 @@ bool ProjectJson::decode(const std::string& text, RecorderProject& out, ProjectJ
         }
     }
 
+    if (root.contains("media") && !root.at("media").is_null()) {
+        const auto& media = root.at("media");
+        if (!media.is_object() || !media.contains("screen") || !media.at("screen").is_object()) {
+            error = {ProjectJsonErrorCode::kMissingRequiredField, "/media/screen",
+                     "媒体清单缺少屏幕引用。"};
+            return false;
+        }
+        ProjectMediaManifest manifest;
+        for (const auto* key : {"screen", "camera", "microphone", "pointerEvents"}) {
+            if (!media.contains(key) || media.at(key).is_null()) continue;
+            const auto& value = media.at(key);
+            if (!value.is_object() || !value.contains("relativePath") ||
+                !value.at("relativePath").is_string()) {
+                error = {ProjectJsonErrorCode::kMissingRequiredField,
+                         std::string("/media/") + key + "/relativePath", "媒体引用缺少相对路径。"};
+                return false;
+            }
+            auto reference = decode_media_reference(value);
+            if (std::string_view(key) == "screen") manifest.screen = std::move(reference);
+            else if (std::string_view(key) == "camera") manifest.camera = std::move(reference);
+            else if (std::string_view(key) == "microphone") manifest.microphone = std::move(reference);
+            else manifest.pointer_events = std::move(reference);
+        }
+        project.media = std::move(manifest);
+    }
+
     out = std::move(project);
     error = ProjectJsonError{};
     return true;
@@ -774,6 +842,15 @@ std::string ProjectJson::encode(const RecorderProject& project) {
                                {"number", marker.number}});
     }
     root["recordingMarkers"] = markers;
+
+    if (project.media) {
+        const auto& media = *project.media;
+        json manifest{{"screen", encode_media_reference(media.screen)}};
+        if (media.camera) manifest["camera"] = encode_media_reference(*media.camera);
+        if (media.microphone) manifest["microphone"] = encode_media_reference(*media.microphone);
+        if (media.pointer_events) manifest["pointerEvents"] = encode_media_reference(*media.pointer_events);
+        root["media"] = std::move(manifest);
+    }
 
     return root.dump(2);
 }
