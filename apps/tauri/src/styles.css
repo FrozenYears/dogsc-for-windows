@@ -86,5 +86,17 @@ body.recording .signal { color: #ff927f; }
 .editor-actions button:hover { border-color: #768c4e; color: #d4e0c3; }
 .editor-actions .danger { color: #d0a29b; }
 .project-console { height: 52px; overflow: auto; margin-top: 14px; padding: 9px 13px; border: 1px solid #292e26; border-radius: 7px; background: #10110e; color: #a9bc89; font: 10px/1.7 'DM Mono', monospace; }
+.project-library-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-bottom: 12px; }
+.project-rename-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.project-rename-row > button { height: 38px; white-space: nowrap; }
+.project-library-row > button { height: 38px; white-space: nowrap; }
+.project-library { display: flex; gap: 8px; min-height: 40px; overflow-x: auto; padding: 5px; border: 1px solid #292e26; border-radius: 7px; background: #10110e; }
+.project-library-item { min-width: 150px; padding: 8px 10px; border: 1px solid #3b4230; border-radius: 6px; text-align: left; color: #cbd8b3; background: #20231c; }
+.project-library-item:hover { border-color: #9bb75d; }
+.project-library-item strong, .project-library-item span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-library-item strong { font-size: 11px; }
+.project-library-item span { margin-top: 4px; color: #78836d; font: 9px 'DM Mono', monospace; }
+.project-history-actions { display: flex; align-items: end; gap: 7px; }
+.project-history-actions button { padding: 8px 11px; border: 1px solid #3b4230; border-radius: 6px; color: #aeb6a1; background: #20231c; font-size: 10px; }
 @media (max-width: 1050px) { .editor-controls { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 1050px) { .workspace { padding-left: 32px; padding-right: 32px; } }

@@ -30,4 +30,8 @@ if(WIN32)
     add_executable(dogsc_d2d_smoke_tests d2d_smoke_tests.cpp)
     target_link_libraries(dogsc_d2d_smoke_tests PRIVATE dogsc_render_d2d)
     add_test(NAME d2d_warp_smoke COMMAND dogsc_d2d_smoke_tests)
+    add_test(NAME project_history_smoke
+        COMMAND pwsh -NoProfile -ExecutionPolicy Bypass -File
+            ${CMAKE_CURRENT_SOURCE_DIR}/project_history_smoke.ps1
+            $<TARGET_FILE:dogsc_capture_cli>)
 endif()

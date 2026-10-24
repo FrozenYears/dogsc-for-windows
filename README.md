@@ -6,11 +6,11 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 ## 状态
 
-**移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染与 Tauri 编辑器首个纵向切片已实现。**
+**移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染与 Tauri 编辑器 P1a 切片已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 中文录制工作区、项目加载以及基于核心时间线的分割/裁切/变速/删除编辑；重排已在 CLI 实现，尚未接入 GUI。
-- 已验证：Windows Release clean build，核心与编辑测试；Tauri 前端 `pnpm build`；NSIS 安装包构建；安装包 GUI 真实录制、暂停/继续/停止与项目编辑操作。
-- 尚未完成：项目库、DXGI 实时预览、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 中文录制工作区、项目库枚举/打开/重命名、分割/裁切/变速/重排、跨多步撤销/重做。
+- 已验证：Windows Release clean build，7/7 CTest（含项目 history/rename smoke）；Tauri 前端 `pnpm build`；NSIS 安装包构建；最新安装包 GUI 项目库、打开、重排、撤销、重做和重命名。
+- 尚未完成：自动保存、脏状态/关闭确认、崩溃恢复、吸附、DXGI 实时预览、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
 
 ## 决策基线
 

@@ -1,10 +1,12 @@
 #include "commands.hpp"
 
-#include <cmath>
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
+#include <vector>
 #include <nlohmann/json.hpp>
 #include <winrt/base.h>
 #include <limits>
@@ -132,35 +134,198 @@ json snapshot(const RecorderProject& project, TimeInterval full_duration) {
         {"sticker", project.sticker_clips.size()},
     };
     return result;
+ }
+
+std::filesystem::path history_directory(const std::filesystem::path& path) {
+    return path.parent_path() / L".project-history";
 }
 
-void write_project(const std::filesystem::path& path, const RecorderProject& project) {
-    const auto temporary = path.parent_path() / (path.filename().wstring() + L".dogsc-edit.tmp");
-    const auto previous = path.parent_path() / L"project.previous.json";
-    const std::string text = ProjectJson::encode(project);
-    std::error_code ignored;
-    std::filesystem::remove(temporary, ignored);
+struct HistoryState {
+    std::vector<std::string> states;
+    std::size_t current = 0;
+};
+
+void copy_file_atomically(const std::filesystem::path& source,
+                          const std::filesystem::path& target) {
+    const auto temporary = target.parent_path() / (target.filename().wstring() + L".dogsc-copy.tmp");
+    std::error_code error;
+    std::filesystem::remove(temporary, error);
+    if (!std::filesystem::copy_file(source, temporary,
+            std::filesystem::copy_options::overwrite_existing, error)) {
+        throw std::runtime_error("工程版本复制失败");
+    }
+    if (!MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::filesystem::remove(temporary, error);
+        throw std::runtime_error("工程版本原子替换失败");
+    }
+}
+
+std::string history_state_name(std::size_t index) {
+    std::ostringstream name;
+    name << "state-" << std::setw(6) << std::setfill('0') << index << ".json";
+    return name.str();
+}
+
+HistoryState read_history(const std::filesystem::path& path) {
+    const auto manifest = history_directory(path) / L"manifest.json";
+    if (!std::filesystem::exists(manifest)) return {};
+    const auto root = json::parse(read_text(manifest));
+    HistoryState history;
+    if (root.contains("states") && root.at("states").is_array()) {
+        for (const auto& item : root.at("states")) {
+            if (item.is_string()) history.states.push_back(item.get<std::string>());
+        }
+    }
+    if (history.states.empty()) return {};
+    history.current = root.value("current", 0U);
+    if (history.current >= history.states.size()) {
+        throw std::runtime_error("工程历史索引损坏");
+    }
+    return history;
+}
+
+void write_text_atomically(const std::filesystem::path& path, const std::string& text,
+                           const wchar_t* suffix) {
+    const auto temporary = path.parent_path() / (path.filename().wstring() + suffix);
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    std::filesystem::remove(temporary, error);
     {
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
         if (!stream) throw std::runtime_error("无法创建工程临时文件");
         stream.write(text.data(), static_cast<std::streamsize>(text.size()));
         stream.flush();
         if (!stream) {
-            std::filesystem::remove(temporary, ignored);
+            std::filesystem::remove(temporary, error);
             throw std::runtime_error("工程临时文件写入失败");
         }
     }
-    if (!std::filesystem::copy_file(path, previous,
-            std::filesystem::copy_options::overwrite_existing, ignored)) {
-        std::filesystem::remove(temporary, ignored);
-        throw std::runtime_error("无法保留 project.previous.json");
-    }
     if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        std::filesystem::remove(temporary, ignored);
-        throw std::runtime_error("工程原子替换失败");
+        std::filesystem::remove(temporary, error);
+        throw std::runtime_error("工程文件原子替换失败");
     }
 }
 
+void write_project_file(const std::filesystem::path& path, const std::string& text) {
+    const auto previous = path.parent_path() / L"project.previous.json";
+    std::error_code error;
+    if (!std::filesystem::copy_file(path, previous,
+            std::filesystem::copy_options::overwrite_existing, error)) {
+        throw std::runtime_error("无法保留 project.previous.json");
+    }
+    write_text_atomically(path, text, L".dogsc-edit.tmp");
+}
+
+void save_history(const std::filesystem::path& path, const HistoryState& history) {
+    json manifest{{"current", history.current}, {"states", history.states}};
+    write_text_atomically(history_directory(path) / L"manifest.json", manifest.dump(2),
+                          L".dogsc-history.tmp");
+}
+
+void write_history_state(const std::filesystem::path& path, const std::string& name,
+                         const std::string& text) {
+    write_text_atomically(history_directory(path) / std::filesystem::path(name), text,
+                          L".dogsc-state.tmp");
+}
+
+void commit_project(const std::filesystem::path& path, const RecorderProject& project) {
+    const auto text = ProjectJson::encode(project);
+    auto history = read_history(path);
+    if (history.states.empty()) {
+        history.states.push_back(history_state_name(0));
+        history.current = 0;
+        write_history_state(path, history.states.front(), read_text(path));
+    }
+    std::error_code error;
+    while (history.states.size() > history.current + 1) {
+        std::filesystem::remove(history_directory(path) / history.states.back(), error);
+        history.states.pop_back();
+    }
+    const auto next = history_state_name(history.states.size());
+    write_history_state(path, next, text);
+    write_project_file(path, text);
+    history.states.push_back(next);
+    history.current = history.states.size() - 1;
+    save_history(path, history);
+}
+
+void change_revision(const std::filesystem::path& path, bool redo) {
+    auto history = read_history(path);
+    if (history.states.empty()) throw std::runtime_error("工程尚未建立撤销历史");
+    if (!redo && history.current == 0) throw std::runtime_error("没有可撤销的工程版本");
+    if (redo && history.current + 1 >= history.states.size()) {
+        throw std::runtime_error("没有可重做的工程版本");
+    }
+    const auto target = redo ? history.current + 1 : history.current - 1;
+    const auto target_path = history_directory(path) / history.states[target];
+    const auto previous = path.parent_path() / L"project.previous.json";
+    std::error_code error;
+    if (!std::filesystem::copy_file(path, previous,
+            std::filesystem::copy_options::overwrite_existing, error)) {
+        throw std::runtime_error("无法保留历史切换前的工程版本");
+    }
+    copy_file_atomically(target_path, path);
+    history.current = target;
+    save_history(path, history);
+}
+
+void attach_history(json& result, const std::filesystem::path& path) {
+    const auto history = read_history(path);
+    result["history"] = {
+        {"canUndo", !history.states.empty() && history.current > 0},
+        {"canRedo", !history.states.empty() && history.current + 1 < history.states.size()},
+    };
+}
+
+json list_projects(const std::filesystem::path& root) {
+    std::error_code error;
+    if (!std::filesystem::is_directory(root, error)) throw std::runtime_error("项目库目录不存在");
+    json result{{"root", root.string()}, {"projects", json::array()}};
+    std::vector<std::filesystem::directory_entry> entries;
+    for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
+        if (!error && entry.is_directory(error)) entries.push_back(entry);
+    }
+    std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) {
+        return left.path().filename().string() < right.path().filename().string();
+    });
+    for (const auto& entry : entries) {
+        const auto project_path = entry.path() / "project.json";
+        if (!std::filesystem::is_regular_file(project_path, error)) continue;
+        json item{{"name", entry.path().filename().string()}, {"path", entry.path().string()}};
+        try {
+            const auto project = read_project(project_path);
+            item["title"] = project.title;
+            item["createdAt"] = project.created_at;
+            try { item["duration"] = full_source_duration(project); }
+            catch (const std::exception& exception) { item["error"] = exception.what(); }
+        } catch (const std::exception& exception) {
+            item["error"] = exception.what();
+        }
+        result["projects"].push_back(std::move(item));
+    }
+    return result;
+}
+
+json rename_project(const std::filesystem::path& project_path, std::wstring_view requested_name) {
+    if (requested_name.empty() || requested_name == L"." || requested_name == L"..") {
+        throw std::invalid_argument("工程名称不能为空");
+    }
+    if (requested_name.back() == L'.' || requested_name.back() == L' ') {
+        throw std::invalid_argument("工程名称不能以句点或空格结尾");
+    }
+    constexpr std::wstring_view invalid = L"<>:\"/\\|?*";
+    if (requested_name.find_first_of(invalid) != std::wstring_view::npos ||
+        requested_name.find(L"..") != std::wstring_view::npos) {
+        throw std::invalid_argument("工程名称包含 Windows 不允许的字符");
+    }
+    const auto source = normalize_project_path(project_path).parent_path();
+    const auto target = source.parent_path() / std::wstring(requested_name);
+    std::error_code error;
+    if (std::filesystem::exists(target, error)) throw std::runtime_error("目标工程目录已存在");
+    std::filesystem::rename(source, target, error);
+    if (error) throw std::runtime_error("工程重命名失败: " + error.message());
+    return json{{"name", target.filename().string()}, {"path", target.string()}};
+}
 RecorderProject apply_edit(const RecorderProject& project, std::wstring_view operation,
                            int count, wchar_t** arguments) {
     const auto duration = full_source_duration(project);
@@ -209,19 +374,42 @@ RecorderProject apply_edit(const RecorderProject& project, std::wstring_view ope
 
 int project_command(const std::filesystem::path& project_path, std::wstring_view action,
                     int argument_count, wchar_t** arguments) {
+    if (action == L"list") {
+        if (argument_count != 0) throw std::invalid_argument("list 不接受额外参数");
+        std::cout << list_projects(project_path).dump(2) << '\n';
+        return 0;
+    }
+    if (action == L"rename") {
+        if (argument_count != 1) throw std::invalid_argument("rename 需要 new-name");
+        std::cout << rename_project(project_path, arguments[0]).dump(2) << '\n';
+        return 0;
+    }
     const auto normalized_path = normalize_project_path(project_path);
-    const auto project = read_project(normalized_path);
+    auto project = read_project(normalized_path);
     const auto duration = full_source_duration(project);
     if (action == L"inspect") {
         if (argument_count != 0) throw std::invalid_argument("inspect 不接受额外参数");
-        std::cout << snapshot(project, duration).dump(2) << '\n';
+        auto output = snapshot(project, duration);
+        attach_history(output, normalized_path);
+        std::cout << output.dump(2) << '\n';
         return 0;
     }
-    if (action != L"edit") throw std::invalid_argument("项目动作仅支持 inspect/edit");
+    if (action == L"undo" || action == L"redo") {
+        if (argument_count != 0) throw std::invalid_argument("undo/redo 不接受额外参数");
+        change_revision(normalized_path, action == L"redo");
+        project = read_project(normalized_path);
+        auto output = snapshot(project, duration);
+        attach_history(output, normalized_path);
+        std::cout << output.dump(2) << '\n';
+        return 0;
+    }
+    if (action != L"edit") throw std::invalid_argument("项目动作仅支持 inspect/edit/undo/redo/rename");
     if (argument_count < 1) throw std::invalid_argument("edit 缺少操作");
     const auto edited = apply_edit(project, arguments[0], argument_count - 1, arguments + 1);
-    write_project(normalized_path, edited);
-    std::cout << snapshot(edited, duration).dump(2) << '\n';
+    commit_project(normalized_path, edited);
+    auto output = snapshot(edited, duration);
+    attach_history(output, normalized_path);
+    std::cout << output.dump(2) << '\n';
     return 0;
 }
 }  // namespace dogsc::cli
