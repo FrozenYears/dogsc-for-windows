@@ -41,6 +41,7 @@ type ProjectLibraryItem = {
   error?: string;
 };
 
+type CaptureTargets = { monitors: Array<{ index: number; device: string; width: number; height: number; primary: boolean }>; windows: Array<{ hwnd: number; title: string; minimized: boolean }> };
 type ProjectLibrary = { root: string; projects: ProjectLibraryItem[] };
 type PreviewFrame = { time: number; width: number; height: number; mime: string; data: string };
 
@@ -88,9 +89,10 @@ app.innerHTML = `
           <div class="panel-heading"><span class="section-kicker">02 / SESSION SETUP</span><span class="panel-index">A</span></div>
           <label class="field"><span>输出目录</span><input id="directory" type="text" spellcheck="false" /></label>
           <div class="field-row">
-            <label class="field"><span>显示器索引</span><select id="monitor"><option value="0">主显示器 · 0</option><option value="1">第二显示器 · 1</option><option value="2">第三显示器 · 2</option></select></label>
+            <label class="field"><span>显示器索引</span><select id="monitor"><option value="0">正在枚举…</option></select></label>
             <label class="field"><span>帧率</span><select id="fps"><option>30</option><option selected>60</option><option>90</option><option>120</option></select></label>
           </div>
+          <label class="field"><span>区域（可选，x,y,width,height）</span><input id="region" type="text" spellcheck="false" placeholder="整块显示器" /></label>
           <div class="field-row">
             <label class="field"><span>编码器</span><select id="codec"><option value="auto" selected>自动选择</option><option value="hevc">HEVC</option><option value="h264">H.264</option><option value="prores">ProRes 422</option></select></label>
             <label class="field"><span>时长（秒）</span><input id="duration" type="number" min="0" step="1" placeholder="手动停止" /></label>
@@ -138,6 +140,7 @@ app.innerHTML = `
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const directory = $("directory") as HTMLInputElement;
 const monitor = $("monitor") as HTMLSelectElement;
+const region = $("region") as HTMLInputElement;
 const fps = $("fps") as HTMLSelectElement;
 const codec = $("codec") as HTMLSelectElement;
 const duration = $("duration") as HTMLInputElement;
@@ -260,6 +263,25 @@ async function runProjectCommand(args: string[]): Promise<ProjectSnapshot> {
   });
 }
 
+async function runCaptureTargets(): Promise<CaptureTargets> {
+  const command = Command.sidecar("binaries/dogsc_capture", ["list"]);
+  let output = "";
+  let errors = "";
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: unknown) => { if (!settled) { settled = true; reject(error instanceof Error ? error : new Error(String(error))); } };
+    command.stdout.on("data", (line) => { output += String(line); });
+    command.stderr.on("data", (line) => { errors += String(line); });
+    command.on("error", fail);
+    command.on("close", (event) => {
+      if (settled) return;
+      if (event.code !== 0) { fail(new Error(errors.trim() || `采集目标枚举退出（exit ${event.code ?? "unknown"}）`)); return; }
+      try { settled = true; resolve(JSON.parse(output) as CaptureTargets); }
+      catch (error) { fail(new Error(`采集目标返回了无效 JSON：${String(error)}`)); }
+    });
+    void command.spawn().catch(fail);
+  });
+}
 async function runProjectListCommand(root: string): Promise<ProjectLibrary> {
   const command = Command.sidecar("binaries/dogsc_capture", ["project", "list", root]);
   let output = "";
@@ -564,6 +586,23 @@ function renderProjectLibrary() {
   }
 }
 
+async function refreshTargets() {
+  try {
+    const targets = await runCaptureTargets();
+    monitor.replaceChildren();
+    for (const item of targets.monitors) {
+      const option = document.createElement("option");
+      option.value = String(item.index);
+      option.textContent = `${item.primary ? "主显示器" : "显示器"} · ${item.index} · ${item.width}×${item.height}`;
+      monitor.append(option);
+    }
+    if (targets.monitors.length === 0) projectLog("没有可用显示器", false);
+  } catch (error) {
+    monitor.innerHTML = '<option value="0">主显示器 · 0</option>';
+    projectLog(`显示器枚举失败：${String(error)}`, false);
+  }
+}
+
 async function refreshLibrary() {
   const root = libraryRoot.value.trim();
   if (!root) { projectLog("请输入项目库目录", false); return; }
@@ -806,6 +845,7 @@ window.addEventListener("beforeunload", (event) => {
   }
 });
 void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
+void refreshTargets();
 
 
 function log(message: string, muted = false) {
@@ -850,6 +890,7 @@ start.addEventListener("click", async () => {
   try {
     const args = ["record", directory.value.trim(), "--monitor", monitor.value, "--fps", fps.value, "--codec", codec.value];
     const seconds = Number(duration.value);
+    if (region.value.trim()) args.push("--region", region.value.trim());
     if (Number.isFinite(seconds) && seconds > 0) args.push("--duration", String(seconds));
     if (systemAudio.checked) args.push("--system-audio");
     if (microphone.checked) args.push("--microphone");
