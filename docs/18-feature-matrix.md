@@ -27,7 +27,7 @@
 | Render | 摄像头布局 | core/D2D 有部分 | compositor + inspector | adrian camera panel | 形状/镜像/阴影/缩放 |
 | Render | 背景/圆角/阴影/样机 | core/D2D 部分 | compositor | 两仓库 layout panels | 画布尺寸、裁切、颜色 |
 | Render | 模糊/spotlight/mosaic | P3a native mosaic blur/spotlight 区域和 intensity 已持久化；GUI 区域编辑与完整预览仍未接入 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜 |
-| Render | 贴图/层级/动画 | core 模型部分，GUI 未接 | compositor + assets | 两仓库 sticker UI | 素材路径安全、层级/出入场 |
+| Render | 贴图/层级/动画 | P3b GUI 已接入 relative-path、时间、位置、宽度贴图片段持久化；资源导入/预览层级/出入场动画未完成 | compositor + assets | 两仓库 sticker UI | 素材路径安全、层级/出入场 |
 | Render | 屏幕 3D/开场 | core 部分，GUI/预览未接 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界 |
 | Export | SourceReader 时间线合成 | P4 prototype 部分已验收：SourceReader→FrameSceneEvaluator→D2D/WARP→MediaWriter，单源视频逐帧输出；尚无分段/变速/音频映射 | export pipeline | xiaoying export.js；adrian VideoExporter | 分段/变速/音频映射 |
 | Export | MP4/M4A 最终导出 | P4 prototype GUI 已验收 H.264 MP4；当前无 M4A/音频、取消和失败恢复 | MF/FFmpeg dynamic | 两仓库 export cancel | MP4/M4A 可重开、取消无半成品 |

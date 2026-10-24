@@ -120,6 +120,7 @@ app.innerHTML = `
           <div class="effect-row"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>点击透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>点击缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label></div>
           <div class="camera-row"><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div>
           <div class="mosaic-row"><label class="field"><span>遮罩开始</span><input id="mosaic-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="mosaic-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>样式</span><select id="mosaic-style"><option value="blur">模糊</option><option value="spotlight">聚光</option></select></label><label class="field"><span>强度</span><input id="mosaic-intensity" type="number" min="0" max="1" step="0.05" value="0.55" /></label><label class="field"><span>X/Y/W/H</span><input id="mosaic-rect" type="text" value="0.35,0.39,0.30,0.22" /></label><button id="mosaic-apply" class="secondary" type="button" disabled>添加遮罩</button></div>
+          <div class="sticker-row"><label class="field"><span>贴图相对路径</span><input id="sticker-path" type="text" spellcheck="false" placeholder="assets/logo.png" /></label><label class="field"><span>开始</span><input id="sticker-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="sticker-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/W</span><input id="sticker-geometry" type="text" value="0.5,0.5,0.38" /></label><button id="sticker-apply" class="secondary" type="button" disabled>添加贴图</button></div>
           <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
           <div class="editor-controls">
             <label class="field"><span>时间点（秒）</span><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /></label>
@@ -198,6 +199,11 @@ const mosaicStyle = $("mosaic-style") as HTMLSelectElement;
 const mosaicIntensity = $("mosaic-intensity") as HTMLInputElement;
 const mosaicRect = $("mosaic-rect") as HTMLInputElement;
 const mosaicApply = $("mosaic-apply") as HTMLButtonElement;
+const stickerPath = $("sticker-path") as HTMLInputElement;
+const stickerStart = $("sticker-start") as HTMLInputElement;
+const stickerDuration = $("sticker-duration") as HTMLInputElement;
+const stickerGeometry = $("sticker-geometry") as HTMLInputElement;
+const stickerApply = $("sticker-apply") as HTMLButtonElement;
 const styleApply = $("style-apply") as HTMLButtonElement;
 let autoSaveTimer: number | undefined;
 let projectCommandBusy = false;
@@ -527,6 +533,7 @@ function updateEditorButtons() {
   projectExport.disabled = !hasProject || projectCommandBusy || !projectExportPath.value.trim();
   styleApply.disabled = !hasProject || projectCommandBusy;
   mosaicApply.disabled = !hasProject || projectCommandBusy;
+  stickerApply.disabled = !hasProject || projectCommandBusy;
   const dirty = snapshot?.session?.dirty ?? false;
   projectSave.disabled = !hasProject || !dirty || projectCommandBusy;
   projectDiscard.disabled = !hasProject || !dirty || projectCommandBusy;
@@ -714,6 +721,17 @@ async function applyMosaic() {
   await applyProjectEdit("mosaic", mosaicStart.value, mosaicDuration.value,
     ...values.map((value) => String(value)), mosaicStyle.value, mosaicIntensity.value);
 }
+
+async function applySticker() {
+  if (!projectFile || !stickerPath.value.trim()) return;
+  const values = stickerGeometry.value.split(",").map((value) => Number(value.trim()));
+  if (values.length !== 3 || values.some((value) => !Number.isFinite(value))) {
+    projectLog("贴图几何必须是 x,y,width", false);
+    return;
+  }
+  await applyProjectEdit("sticker", stickerStart.value, stickerDuration.value,
+    stickerPath.value.trim(), ...values.map((value) => String(value)));
+}
 async function applyProjectStyles() {
   if (!projectFile || !(await flushProjectSave())) return;
   projectCommandBusy = true;
@@ -780,6 +798,7 @@ projectExportPath.addEventListener("input", updateEditorButtons);
 projectExport.addEventListener("click", () => { void exportProject(); });
 styleApply.addEventListener("click", () => { void applyProjectStyles(); });
 mosaicApply.addEventListener("click", () => { void applyMosaic(); });
+stickerApply.addEventListener("click", () => { void applySticker(); });
 window.addEventListener("beforeunload", (event) => {
   if (projectCommandBusy || projectSnapshot?.session?.dirty) {
     event.preventDefault();

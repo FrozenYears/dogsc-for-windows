@@ -442,6 +442,15 @@ RecorderProject apply_edit(const RecorderProject& project, std::wstring_view ope
         else throw std::invalid_argument("mosaic style 需要 blur/spotlight");
         clip.intensity = std::clamp(parse_double(arguments[7], "intensity"), 0.0, 1.0);
         result = ProjectTimelineEditing::inserting_mosaic(project, clip);
+    } else if (operation == L"sticker") {
+        if (count != 6) throw std::invalid_argument("sticker 需要 start、duration、relative-path、x、y、width");
+        StickerClip clip;
+        clip.id = new_uuid(project);
+        clip.timing = {parse_double(arguments[0], "start"), parse_double(arguments[1], "duration")};
+        clip.relative_path = winrt::to_string(arguments[2]);
+        clip.position = {parse_double(arguments[3], "x"), parse_double(arguments[4], "y")};
+        clip.width = parse_double(arguments[5], "width");
+        result = ProjectTimelineEditing::inserting_sticker(project, clip);
     } else {
         const bool remove = operation == L"remove";
         if ((remove && count != 1) || (!remove && count < 2)) {

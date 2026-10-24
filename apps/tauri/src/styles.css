@@ -98,6 +98,8 @@ body.recording .signal { color: #ff927f; }
 .camera-row { display: grid; grid-template-columns: 220px auto; gap: 12px; align-items: end; margin-top: 12px; }
 .camera-hidden-toggle { display: flex; gap: 8px; align-items: center; height: 38px; color: #aeb6a1; font-size: 11px; }
 .mosaic-row { display: grid; grid-template-columns: 100px 100px 120px 100px minmax(150px, 1fr) auto; gap: 10px; align-items: end; margin-top: 12px; }
+.sticker-row { display: grid; grid-template-columns: minmax(220px, 1fr) 100px 100px minmax(140px, 1fr) auto; gap: 10px; align-items: end; margin-top: 12px; }
+.sticker-row > button { height: 38px; white-space: nowrap; }
 .mosaic-row > button { height: 38px; white-space: nowrap; }
 .style-row > button { height: 38px; white-space: nowrap; }
 .project-export-row > button { height: 38px; white-space: nowrap; }
