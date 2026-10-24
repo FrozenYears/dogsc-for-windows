@@ -114,7 +114,7 @@ app.innerHTML = `
           <div class="project-rename-row"><label class="field"><span>工程名称</span><input id="project-rename-name" type="text" spellcheck="false" placeholder="新工程目录名" /></label><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
           <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div class="project-history-actions"><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
           <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
-          <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><span id="project-preview-status">未加载预览</span></div></div>
+          <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
           <div class="editor-controls">
             <label class="field"><span>时间点（秒）</span><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /></label>
             <label class="field"><span>当前片段</span><select id="edit-segment"><option value="">未选择</option></select></label>
@@ -171,6 +171,9 @@ const editMoveDown = $("edit-move-down") as HTMLButtonElement;
 const projectPreviewImage = $("project-preview-image") as HTMLImageElement;
 const projectPreviewFrame = $("project-preview-frame") as HTMLButtonElement;
 const projectPreviewStatus = $("project-preview-status");
+const projectPreviewPlay = $("project-preview-play") as HTMLButtonElement;
+let previewPlaying = false;
+let previewPending = false;
 
 function projectLog(message: string, muted = false) {
   const line = document.createElement("span");
@@ -283,9 +286,11 @@ async function stopPreviewStream() {
     previewChild = null;
   }
   previewBuffer = "";
+  previewPlaying = false;
+  previewPending = false;
+  projectPreviewPlay.textContent = "播放";
   projectPreviewImage.removeAttribute("src");
   projectPreviewStatus.textContent = "未加载预览";
-
 }
 function consumePreviewLines(chunk: string) {
   previewBuffer += chunk;
@@ -296,12 +301,29 @@ function consumePreviewLines(chunk: string) {
     if (line) {
       try {
         const payload = JSON.parse(line) as PreviewFrame | { error: string };
-        if ("error" in payload) projectPreviewStatus.textContent = `预览失败：${payload.error}`;
-        else {
+        previewPending = false;
+        if ("error" in payload) {
+          previewPlaying = false;
+          projectPreviewPlay.textContent = "播放";
+          projectPreviewStatus.textContent = `预览失败：${payload.error}`;
+        } else {
           projectPreviewImage.src = payload.data;
           projectPreviewStatus.textContent = `${payload.width}×${payload.height} @ ${payload.time.toFixed(2)}s`;
+          if (previewPlaying) {
+            const next = payload.time + 1 / 30;
+            if (projectSnapshot && next >= projectSnapshot.outputDuration) {
+              previewPlaying = false;
+              projectPreviewPlay.textContent = "播放";
+            } else {
+              editTime.value = next.toFixed(3);
+              window.setTimeout(() => { void requestPreviewFrame(); }, 0);
+            }
+          }
         }
       } catch (error) {
+        previewPending = false;
+        previewPlaying = false;
+        projectPreviewPlay.textContent = "播放";
         projectPreviewStatus.textContent = `预览返回无效 JSON：${String(error)}`;
       }
     }
@@ -319,16 +341,44 @@ async function startPreviewStream() {
   catch (error) { projectPreviewStatus.textContent = `预览启动失败：${String(error)}`; }
 }
 
+async function requestPreviewFrame() {
+  if (!previewChild || previewPending) return;
+  const seconds = Number(editTime.value) || 0;
+  if (previewPlaying && projectSnapshot && seconds >= projectSnapshot.outputDuration) {
+    previewPlaying = false;
+    projectPreviewPlay.textContent = "播放";
+    return;
+  }
+  previewPending = true;
+  try { await previewChild.write(`F ${seconds}\n`); }
+  catch (error) {
+    previewPending = false;
+    previewPlaying = false;
+    projectPreviewPlay.textContent = "播放";
+    projectPreviewStatus.textContent = `预览请求失败：${String(error)}`;
+  }
+}
 async function loadPreviewFrame() {
   if (!projectFile) return;
   projectPreviewFrame.disabled = true;
   projectPreviewStatus.textContent = "解码中…";
   await startPreviewStream();
-  if (previewChild) {
-    try { await previewChild.write(`F ${Number(editTime.value) || 0}\n`); }
-    catch (error) { projectPreviewStatus.textContent = `预览请求失败：${String(error)}`; }
-  }
+  await requestPreviewFrame();
   updateEditorButtons();
+}
+
+async function togglePreviewPlay() {
+  if (!projectFile) return;
+  if (previewPlaying) {
+    previewPlaying = false;
+    projectPreviewPlay.textContent = "播放";
+    return;
+  }
+  if (projectSnapshot && Number(editTime.value) >= projectSnapshot.outputDuration) editTime.value = "0";
+  await startPreviewStream();
+  previewPlaying = true;
+  projectPreviewPlay.textContent = "暂停";
+  await requestPreviewFrame();
 }
 
 function renderProjectSnapshot() {
@@ -387,6 +437,7 @@ function updateEditorButtons() {
   projectRedo.disabled = !hasProject || !(snapshot?.history?.canRedo ?? false);
   projectRename.disabled = !hasProject || !projectRenameName.value.trim();
   projectPreviewFrame.disabled = !hasProject;
+  projectPreviewPlay.disabled = !hasProject;
 }
 
 function renderProjectLibrary() {
@@ -522,6 +573,7 @@ editRemove.addEventListener("click", () => { void applyProjectEdit("remove", edi
 projectRenameName.addEventListener("input", updateEditorButtons);
 projectRename.addEventListener("click", () => { void renameProject(); });
 projectPreviewFrame.addEventListener("click", () => { void loadPreviewFrame(); });
+projectPreviewPlay.addEventListener("click", () => { void togglePreviewPlay(); });
 void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
 
 

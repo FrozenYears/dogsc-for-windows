@@ -8,9 +8,9 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 **移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染、P1a 项目编辑与 P2a/P2b 预览基础已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、时间线编辑、多步历史、重命名；MF SourceReader 单帧 BMP data URI、持久 frame stream CLI 与 Tauri child 接线。
-- 已验证：Windows Release clean build；7/7 CTest（含项目 history/rename smoke）；H.264/HEVC 320×200 单帧与 0.1s seek；native stream 0/0.1 请求；最新安装包 GUI H.264 0/0.1 预览与跨工程 HEVC 0s 预览。
-- 尚未完成：自动保存、脏状态/关闭确认、崩溃恢复、吸附、DXGI 实时播放/拖动、播放时钟、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、时间线编辑、多步历史、重命名；MF SourceReader 单帧 BMP data URI、持久 frame stream、Tauri child 和 30fps 单飞播放请求。
+- 已验证：Windows Release clean build；7/7 CTest（含项目 history/rename smoke）；H.264/HEVC 320×200 单帧与 0.1s seek；native stream 0/0.1 请求；最新安装包 GUI H.264 0/0.1、跨工程 HEVC 0s 与 0.2s 播放头预览。
+- 尚未完成：自动保存、脏状态/关闭确认、崩溃恢复、吸附、DXGI 实时播放/拖动、硬背压、丢帧统计、无撕裂、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
 
 ## 决策基线
 
