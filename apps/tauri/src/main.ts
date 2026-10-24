@@ -41,6 +41,7 @@ type ProjectLibraryItem = {
 };
 
 type ProjectLibrary = { root: string; projects: ProjectLibraryItem[] };
+type PreviewFrame = { time: number; width: number; height: number; mime: string; data: string };
 
 let projectSnapshot: ProjectSnapshot | null = null;
 let projectFile = "";
@@ -111,6 +112,7 @@ app.innerHTML = `
           <div class="project-rename-row"><label class="field"><span>工程名称</span><input id="project-rename-name" type="text" spellcheck="false" placeholder="新工程目录名" /></label><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
           <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div class="project-history-actions"><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
           <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
+          <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><span id="project-preview-status">未加载预览</span></div></div>
           <div class="editor-controls">
             <label class="field"><span>时间点（秒）</span><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /></label>
             <label class="field"><span>当前片段</span><select id="edit-segment"><option value="">未选择</option></select></label>
@@ -164,6 +166,9 @@ const projectRenameName = $("project-rename-name") as HTMLInputElement;
 const projectRename = $("project-rename") as HTMLButtonElement;
 const editMoveUp = $("edit-move-up") as HTMLButtonElement;
 const editMoveDown = $("edit-move-down") as HTMLButtonElement;
+const projectPreviewImage = $("project-preview-image") as HTMLImageElement;
+const projectPreviewFrame = $("project-preview-frame") as HTMLButtonElement;
+const projectPreviewStatus = $("project-preview-status");
 
 function projectLog(message: string, muted = false) {
   const line = document.createElement("span");
@@ -270,12 +275,38 @@ async function runProjectRename(path: string, name: string): Promise<{ path: str
   });
 }
 
+async function runProjectFrame(path: string, seconds: number): Promise<PreviewFrame> {
+  const command = Command.sidecar("binaries/dogsc_capture", ["project", "frame", path, String(seconds), "960"]);
+  let output = "";
+  let errors = "";
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    command.stdout.on("data", (line) => { output += String(line); });
+    command.stderr.on("data", (line) => { errors += String(line); });
+    command.on("error", fail);
+    command.on("close", (event) => {
+      if (settled) return;
+      if (event.code !== 0) { fail(new Error(errors.trim() || `预览命令退出（exit ${event.code ?? "unknown"}）`)); return; }
+      try { settled = true; resolve(JSON.parse(output) as PreviewFrame); }
+      catch (error) { fail(new Error(`预览命令返回了无效 JSON：${String(error)}`)); }
+    });
+    void command.spawn().catch(fail);
+  });
+}
+
 function renderProjectSnapshot() {
   const snapshot = projectSnapshot;
   if (!snapshot) {
     projectTitle.textContent = "未打开工程";
     projectDuration.textContent = "—";
     projectSegmentCount.textContent = "—";
+    projectPreviewImage.removeAttribute("src");
+    projectPreviewStatus.textContent = "未加载预览";
     timeline.innerHTML = '<span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span>';
     updateEditorButtons();
     return;
@@ -323,6 +354,7 @@ function updateEditorButtons() {
   projectUndo.disabled = !hasProject || !(snapshot?.history?.canUndo ?? false);
   projectRedo.disabled = !hasProject || !(snapshot?.history?.canRedo ?? false);
   projectRename.disabled = !hasProject || !projectRenameName.value.trim();
+  projectPreviewFrame.disabled = !hasProject;
 }
 
 function renderProjectLibrary() {
@@ -431,6 +463,21 @@ async function renameProject() {
   }
 }
 
+async function loadPreviewFrame() {
+  if (!projectFile) return;
+  projectPreviewFrame.disabled = true;
+  projectPreviewStatus.textContent = "解码中…";
+  try {
+    const frame = await runProjectFrame(projectFile, Number(editTime.value) || 0);
+    projectPreviewImage.src = frame.data;
+    projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s`;
+  } catch (error) {
+    projectPreviewStatus.textContent = `预览失败：${String(error)}`;
+  } finally {
+    updateEditorButtons();
+  }
+}
+
 projectOpen.addEventListener("click", () => { void loadProject(projectPathInput.value); });
 railProjects.addEventListener("click", () => { document.querySelector(".editor-panel")?.scrollIntoView({ behavior: "smooth" }); });
 libraryRefresh.addEventListener("click", () => { void refreshLibrary(); });
@@ -455,6 +502,7 @@ editMoveDown.addEventListener("click", () => {
 editRemove.addEventListener("click", () => { void applyProjectEdit("remove", editSegment.value); });
 projectRenameName.addEventListener("input", updateEditorButtons);
 projectRename.addEventListener("click", () => { void renameProject(); });
+projectPreviewFrame.addEventListener("click", () => { void loadPreviewFrame(); });
 void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
 
 

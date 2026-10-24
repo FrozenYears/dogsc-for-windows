@@ -20,7 +20,7 @@
 | Timeline | 重排/吸附 | P1a GUI 已验收重排；吸附未实现 | core + Tauri | adrian timeline drag | 非 no-op 顺序断言、吸附边界 |
 | Timeline | 撤销/重做 | P1a GUI 已验收多步 history；关闭恢复未完成 | editor store + project history | 两仓库 command/history | 多步编辑 undo/redo |
 | Timeline | 自动运镜/缩放 | core 求值已存在，UI/预览未接入 | frame tracks + inspector | 两仓库 auto-zoom | 点击分组、spring、剪切桥接 |
-| Preview | 媒体解码 | 未实现 | SourceReader/media source | xiaoying frame source | 首帧、seek、EOF、坏帧 |
+| Preview | 媒体解码 | P2a 部分已验收：MF SourceReader 首帧解码为 BMP data URI，H.264/HEVC 320×200 CLI smoke 与 GUI 0s 预览通过；非零 seek/错误边界未完成 | `tools/capture_cli/frame.cpp` + Tauri | xiaoying frame source | 首帧、seek、EOF、坏帧 |
 | Preview | 实时播放/拖动 | 未实现 | DXGI + playback clock | 两仓库 preview/transport | 60Hz、掉帧<2%、无撕裂 |
 | Render | D2D/WARP 六层离屏 | 已实现，像素基准未完成 | `render/d2d` | 两仓库效果组织 | WARP 读回、PSNR 基准 |
 | Render | 光标/点击效果 | core 有部分，实时预览未接 | cursor renderer | xiaoying cursors | 光标位置/热点/点击波纹 |

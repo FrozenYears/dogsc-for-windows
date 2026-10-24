@@ -6,11 +6,11 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 ## 状态
 
-**移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染与 Tauri 编辑器 P1a 切片已实现。**
+**移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染、P1a 项目编辑与 P2a 单帧预览已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 中文录制工作区、项目库枚举/打开/重命名、分割/裁切/变速/重排、跨多步撤销/重做。
-- 已验证：Windows Release clean build，7/7 CTest（含项目 history/rename smoke）；Tauri 前端 `pnpm build`；NSIS 安装包构建；最新安装包 GUI 项目库、打开、重排、撤销、重做和重命名。
-- 尚未完成：自动保存、脏状态/关闭确认、崩溃恢复、吸附、DXGI 实时预览、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、时间线编辑、多步历史、重命名和 MF SourceReader 首帧 BMP data URI 预览。
+- 已验证：Windows Release clean build；7/7 CTest（含项目 history/rename smoke）；H.264/HEVC 320×200 预览帧 CLI smoke；Tauri 前端 `pnpm build`；NSIS 安装包；最新 GUI 项目库、编辑历史、重命名和 0s 预览帧。
+- 尚未完成：自动保存、脏状态/关闭确认、崩溃恢复、吸附、非零 seek、DXGI 实时播放/拖动、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
 
 ## 决策基线
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -24,4 +25,6 @@ void list_targets();
 void list_encoders();
 int project_command(const std::filesystem::path& project_path, std::wstring_view action,
                     int argument_count, wchar_t** arguments);
+int project_frame_command(const std::filesystem::path& project_path, double seconds,
+                          std::uint32_t max_width);
 } // namespace dogsc::cli
