@@ -26,6 +26,12 @@ void usage() {
         "  dogsc_capture list\n"
         "  dogsc_capture encoders\n"
         "  dogsc_capture probe <new-output-directory>\n"
+        "  dogsc_capture project inspect <project.json|project-directory>\n"
+        "  dogsc_capture project edit <project.json|project-directory> split <output-time>\n"
+        "  dogsc_capture project edit <project.json|project-directory> trim <segment-id> <left|right> <output-time>\n"
+        "  dogsc_capture project edit <project.json|project-directory> remove <segment-id>\n"
+        "  dogsc_capture project edit <project.json|project-directory> move <segment-id> <index>\n"
+        "  dogsc_capture project edit <project.json|project-directory> rate <segment-id> <playback-rate>\n"
         "  dogsc_capture record <new-project-directory> [options]\n"
         "  dogsc_capture recover <parts-directory> <new-media-file>\n"
         "Options:\n"
@@ -64,6 +70,9 @@ int wmain(int argc, wchar_t** argv) {
         if (command == L"list" && argc == 2) { dogsc::cli::list_targets(); return 0; }
         if (command == L"encoders" && argc == 2) { dogsc::cli::list_encoders(); return 0; }
         if (command == L"probe" && argc == 3) return dogsc::cli::probe(argv[2]);
+        if (command == L"project" && argc >= 4) {
+            return dogsc::cli::project_command(argv[3], argv[2], argc - 4, argv + 4);
+        }
         if (command == L"recover" && argc == 4) {
             dogsc::capture::recover_segments(argv[2], argv[3]);
             std::cout << "Recovered completed segments without re-encoding.\n";

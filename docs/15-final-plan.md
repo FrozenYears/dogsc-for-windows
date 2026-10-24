@@ -88,8 +88,8 @@ M0  核心层 + 对拍工具 + 契约定义（无 UI / 无 GPU）
 - **M0**：核心模型、时间线、JSON、`scene_dump` 已落地。Release clean build 与 6/6 测试通过。
 - **M1**：WGC/WASAPI/MF 采集 CLI 已有本机硬件 smoke；HEVC/H.264 可用厂商硬件 MFT，ProRes 使用动态 FFmpeg。短时采集与恢复验证不等于长时 4K60、干净系统 HEVC 可用性、异机同步或发布合规通过。
 - **M2a**：D2D/WARP 离屏 `IFrameCompositor` 已实现完整六层合成，并有实际读回像素与失败路径 smoke。尚无固定基准 PNG/PSNR 对拍，因此 §5 的画质阈值未宣告通过。
-- **桌面壳**：Tauri v2 中文录制工作区已构建 NSIS 安装包，并通过 C++ `dogsc_capture.exe` sidecar 接线；按钮运行时回归、目录选择器、项目库和编辑器仍未完成。
-- **后续未完成**：DXGI 实时预览、Tauri 编辑器、SourceReader 时间线解码/导出、完整资源与工程生命周期、长时采集/跨设备矩阵和 FFmpeg 分发材料。
+- **桌面壳**：Tauri v2 中文录制工作区已构建 NSIS 安装包，并通过 C++ `dogsc_capture.exe` sidecar 接线；GUI 已验证项目加载、分割、裁切、变速和主轨删除，重排仅有 CLI 命令，尚未接入 GUI；完整项目库、画布、检查器和预览仍未完成。
+- **后续未完成**：DXGI 实时预览、Tauri 完整编辑器、SourceReader 时间线解码/导出、完整资源与工程生命周期、长时采集/跨设备矩阵和 FFmpeg 分发材料。
 - **ProRes 性能风险已实测**：本机 1 秒录制，720p30 收到 35 帧；1080p30 收到 5 帧；1440p30 收到 3 帧；后两者各重复补帧 25/27 次。当前 CPU 编码路径仅 720p 样本达标，ProRes 不可作为已通过的实时高清录制路径。
 
 以上状态只代表仓库实现与本机测试，不代表完整产品可发布。

@@ -6,18 +6,18 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 ## 状态
 
-**移植进行中：M0 核心基线完成；M1 原生采集、M2a 离屏渲染与 Tauri 桌面壳首个切片已实现。**
+**移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染与 Tauri 编辑器首个纵向切片已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 中文录制工作区和 C++ capture sidecar 接线。
-- 已验证：Windows Release clean build，6/6 CTest；Tauri 前端 `pnpm build`；NSIS 安装包构建；Tauri Windows GUI 启动并取得有效窗口句柄。
-- 尚未完成：项目库、编辑器、DXGI 实时预览、SourceReader 时间线导出工作流、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 中文录制工作区、项目加载以及基于核心时间线的分割/裁切/变速/删除编辑；重排已在 CLI 实现，尚未接入 GUI。
+- 已验证：Windows Release clean build，核心与编辑测试；Tauri 前端 `pnpm build`；NSIS 安装包构建；安装包 GUI 真实录制、暂停/继续/停止与项目编辑操作。
+- 尚未完成：项目库、DXGI 实时预览、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
 
 ## 决策基线
 
 | 项 | 决定 |
 |---|---|
 | 语言 | C++20（禁用 `/fp:fast`） |
-| 编辑器 UI | WinUI 3（C++/WinRT） |
+| 编辑器 UI | Tauri 2 + HTML/CSS/TypeScript（当前录制与项目时间线编辑切片） |
 | HUD 窗口 | Win32 顶层窗口 + Direct2D 自绘 |
 | 合成 | Direct2D + 少量 HLSL，预览与导出共用 `IFrameCompositor` |
 | 采集 | Windows.Graphics.Capture + WASAPI + Media Foundation SinkWriter |

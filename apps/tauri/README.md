@@ -31,4 +31,4 @@ pnpm prepare:sidecar
 pnpm tauri:build
 ```
 
-安装包输出在 `src-tauri/target/release/bundle/nsis/`。当前切片包含录制参数、暂停/继续、停止保存和原生 sidecar 日志；编辑器、项目库、实时预览与完整导出仍未接入。
+安装包输出在 `src-tauri/target/release/bundle/nsis/`。当前切片包含录制参数、暂停/继续、停止保存、项目加载、分割、裁切、变速和删除主轨片段；重排仅由 native CLI 提供，实时预览、完整项目库、画布、检查器与完整导出仍未接入。

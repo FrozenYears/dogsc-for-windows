@@ -14,6 +14,25 @@ let recordingChild: CaptureChild | null = null;
 let recordingStartedAt = 0;
 let timer: number | undefined;
 
+type ProjectSegment = {
+  id: string;
+  sourceStart: number;
+  sourceDuration: number;
+  playbackRate: number;
+  outputStart: number;
+  outputEnd: number;
+};
+
+type ProjectSnapshot = {
+  project: { title: string; version: number };
+  fullSourceDuration: number;
+  outputDuration: number;
+  segments: ProjectSegment[];
+};
+
+let projectSnapshot: ProjectSnapshot | null = null;
+let projectFile = "";
+
 const defaultDirectory = async () => join(await homeDir(), "Videos", "DogSC");
 
 app.innerHTML = `
@@ -68,6 +87,22 @@ app.innerHTML = `
           <div class="console" id="console" aria-live="polite"><span class="console-line muted">等待录制任务……</span></div>
           <p class="note">当前为 Tauri 原生壳首个切片。停止后会在输出目录生成媒体文件、指针轨和 project.json。</p>
         </section>
+        <section class="panel editor-panel">
+          <div class="panel-heading"><span class="section-kicker">04 / PROJECT EDITOR</span><span class="panel-index">C</span></div>
+          <div class="project-open-row">
+            <label class="field"><span>project.json 路径或工程目录</span><input id="project-path" type="text" spellcheck="false" placeholder="例如：D:\\Videos\\DogSC\\演示录制" /></label>
+            <button id="project-open" class="secondary" type="button">打开工程</button>
+          </div>
+          <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div></div>
+          <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
+          <div class="editor-controls">
+            <label class="field"><span>时间点（秒）</span><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /></label>
+            <label class="field"><span>当前片段</span><select id="edit-segment"><option value="">未选择</option></select></label>
+            <label class="field"><span>速度</span><input id="edit-rate" type="number" min="1" max="100" step="0.1" value="1" /></label>
+            <div class="editor-actions"><button id="edit-split" class="secondary" type="button" disabled>在时间点分割</button><button id="edit-trim-left" class="secondary" type="button" disabled>左裁切</button><button id="edit-trim-right" class="secondary" type="button" disabled>右裁切</button><button id="edit-rate-button" class="secondary" type="button" disabled>应用速度</button><button id="edit-remove" class="secondary danger" type="button" disabled>删除片段</button></div>
+          </div>
+          <div id="project-console" class="project-console" aria-live="polite"><span class="console-line muted">等待打开工程……</span></div>
+        </section>
       </div>
     </section>
   </main>
@@ -88,6 +123,162 @@ const stop = $("stop") as HTMLButtonElement;
 const statusText = $("status-text");
 const elapsed = $("elapsed");
 const consoleOutput = $("console");
+const projectPathInput = $("project-path") as HTMLInputElement;
+const projectOpen = $("project-open") as HTMLButtonElement;
+const projectTitle = $("project-title");
+const projectDuration = $("project-duration");
+const projectSegmentCount = $("project-segment-count");
+const timeline = $("timeline");
+const editTime = $("edit-time") as HTMLInputElement;
+const editSegment = $("edit-segment") as HTMLSelectElement;
+const editRate = $("edit-rate") as HTMLInputElement;
+const editSplit = $("edit-split") as HTMLButtonElement;
+const editTrimLeft = $("edit-trim-left") as HTMLButtonElement;
+const editTrimRight = $("edit-trim-right") as HTMLButtonElement;
+const editRateButton = $("edit-rate-button") as HTMLButtonElement;
+const editRemove = $("edit-remove") as HTMLButtonElement;
+const projectConsole = $("project-console");
+
+function projectLog(message: string, muted = false) {
+  const line = document.createElement("span");
+  line.className = `console-line${muted ? " muted" : ""}`;
+  line.textContent = message.trim() || " ";
+  projectConsole.append(line);
+  while (projectConsole.children.length > 6) projectConsole.firstElementChild?.remove();
+  projectConsole.scrollTop = projectConsole.scrollHeight;
+}
+
+function normalizeProjectFile(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /\.json$/i.test(trimmed) ? trimmed : `${trimmed.replace(/[\\/]+$/, "")}\\project.json`;
+}
+
+function formatSeconds(value: number) {
+  return `${value.toFixed(2)}s`;
+}
+
+async function runProjectCommand(args: string[]): Promise<ProjectSnapshot> {
+  const command = Command.sidecar("binaries/dogsc_capture", ["project", ...args]);
+  let output = "";
+  let errors = "";
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    command.stdout.on("data", (line) => { output += String(line); });
+    command.stderr.on("data", (line) => { errors += String(line); });
+    command.on("error", fail);
+    command.on("close", (event) => {
+      if (settled) return;
+      if (event.code !== 0) {
+        fail(new Error(errors.trim() || `项目命令退出（exit ${event.code ?? "unknown"}）`));
+        return;
+      }
+      try {
+        settled = true;
+        resolve(JSON.parse(output) as ProjectSnapshot);
+      } catch (error) {
+        fail(new Error(`项目命令返回了无效 JSON：${String(error)}`));
+      }
+    });
+    void command.spawn().catch(fail);
+  });
+}
+
+function renderProjectSnapshot() {
+  const snapshot = projectSnapshot;
+  if (!snapshot) {
+    projectTitle.textContent = "未打开工程";
+    projectDuration.textContent = "—";
+    projectSegmentCount.textContent = "—";
+    timeline.innerHTML = '<span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span>';
+    return;
+  }
+  projectTitle.textContent = snapshot.project.title;
+  projectDuration.textContent = formatSeconds(snapshot.outputDuration);
+  projectSegmentCount.textContent = String(snapshot.segments.length);
+  const previous = editSegment.value;
+  editSegment.innerHTML = '<option value="">未选择</option>';
+  for (const segment of snapshot.segments) {
+    const option = document.createElement("option");
+    option.value = segment.id;
+    option.textContent = `${segment.id.slice(0, 8)} · ${formatSeconds(segment.outputEnd - segment.outputStart)}`;
+    editSegment.append(option);
+  }
+  if (snapshot.segments.some((segment) => segment.id === previous)) editSegment.value = previous;
+  timeline.innerHTML = "";
+  for (const segment of snapshot.segments) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "timeline-segment";
+    item.dataset.segmentId = segment.id;
+    item.style.width = `${Math.max(5, (segment.outputEnd - segment.outputStart) / snapshot.outputDuration * 100)}%`;
+    item.textContent = `${formatSeconds(segment.outputStart)}—${formatSeconds(segment.outputEnd)}`;
+    item.title = segment.id;
+    item.addEventListener("click", () => { editSegment.value = segment.id; updateEditorButtons(); });
+    timeline.append(item);
+  }
+  updateEditorButtons();
+}
+
+function updateEditorButtons() {
+  const hasProject = projectSnapshot !== null && projectFile.length > 0;
+  const hasSegment = hasProject && editSegment.value.length > 0;
+  editSplit.disabled = !hasProject;
+  editTrimLeft.disabled = !hasSegment;
+  editTrimRight.disabled = !hasSegment;
+  editRateButton.disabled = !hasSegment;
+  editRemove.disabled = !hasSegment;
+}
+
+async function loadProject(value: string) {
+  const path = normalizeProjectFile(value);
+  if (!path) { projectLog("请输入 project.json 路径", false); return; }
+  projectOpen.disabled = true;
+  projectLog(`正在打开 ${path}`, true);
+  try {
+    projectSnapshot = await runProjectCommand(["inspect", path]);
+    projectFile = path;
+    projectPathInput.value = path;
+    renderProjectSnapshot();
+    projectLog("工程已打开", false);
+  } catch (error) {
+    projectLog(`打开工程失败：${String(error)}`, false);
+  } finally {
+    projectOpen.disabled = false;
+    updateEditorButtons();
+  }
+}
+
+async function applyProjectEdit(operation: string, ...args: string[]) {
+  if (!projectFile) return;
+  projectOpen.disabled = true;
+  try {
+    projectSnapshot = await runProjectCommand(["edit", projectFile, operation, ...args]);
+    renderProjectSnapshot();
+    projectLog(`已应用 ${operation}，project.previous.json 已保留`, false);
+  } catch (error) {
+    projectLog(`编辑失败：${String(error)}`, false);
+  } finally {
+    projectOpen.disabled = false;
+    updateEditorButtons();
+  }
+}
+
+projectOpen.addEventListener("click", () => { void loadProject(projectPathInput.value); });
+editSegment.addEventListener("change", updateEditorButtons);
+editSplit.addEventListener("click", () => {
+  const time = Number(editTime.value);
+  if (Number.isFinite(time)) void applyProjectEdit("split", String(time));
+});
+editTrimLeft.addEventListener("click", () => { void applyProjectEdit("trim", editSegment.value, "left", editTime.value); });
+editTrimRight.addEventListener("click", () => { void applyProjectEdit("trim", editSegment.value, "right", editTime.value); });
+editRateButton.addEventListener("click", () => { void applyProjectEdit("rate", editSegment.value, editRate.value); });
+editRemove.addEventListener("click", () => { void applyProjectEdit("remove", editSegment.value); });
 
 void defaultDirectory().then((value) => { directory.value = value; });
 
@@ -146,6 +337,7 @@ start.addEventListener("click", async () => {
       stopTimer();
       setRecording(false);
       log(`录制进程结束（exit ${event.code ?? "unknown"}）`);
+      if (event.code === 0) void loadProject(directory.value);
     });
     recordingChild = await command.spawn();
     setRecording(true);

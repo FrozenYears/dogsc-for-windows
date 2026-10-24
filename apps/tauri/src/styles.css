@@ -70,4 +70,21 @@ h1 { margin: 12px 0 0; font-size: clamp(25px, 3vw, 39px); letter-spacing: -.055e
 .note { grid-column: 1 / -1; margin: -7px 0 0; color: #6f7667; font-size: 10px; }
 body.recording .signal-dot { background: #ff765f; box-shadow: 0 0 14px #ff765f; }
 body.recording .signal { color: #ff927f; }
+.editor-panel { grid-column: 1 / -1; }
+.project-open-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
+.project-open-row > button { height: 38px; white-space: nowrap; }
+.project-summary { display: flex; gap: clamp(26px, 7vw, 88px); margin: 24px 0 18px; }
+.project-summary strong { display: block; max-width: 300px; overflow: hidden; color: #d5e99a; font: 500 17px 'DM Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.project-summary span { display: block; margin-top: 6px; color: #777d6d; font: 9px 'DM Mono', monospace; text-transform: uppercase; }
+.timeline { display: flex; gap: 4px; align-items: stretch; min-height: 54px; padding: 5px; border: 1px solid #292e26; border-radius: 7px; background: #10110e; }
+.timeline-empty { align-self: center; padding: 0 9px; color: #666e5e; font: 10px 'DM Mono', monospace; }
+.timeline-segment { min-width: 0; overflow: hidden; padding: 0 8px; border: 1px solid #637c3c; border-radius: 5px; color: #1d260f; background: linear-gradient(135deg, #c9e681, #90ae57); font: 10px 'DM Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-segment:hover { background: #e2f6a8; }
+.editor-controls { display: grid; grid-template-columns: 150px minmax(220px, 1fr) 120px; gap: 12px; align-items: end; margin-top: 18px; }
+.editor-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.editor-actions button { border-radius: 7px; padding: 9px 12px; border: 1px solid #3b4230; color: #aeb6a1; background: #20231c; font-size: 11px; }
+.editor-actions button:hover { border-color: #768c4e; color: #d4e0c3; }
+.editor-actions .danger { color: #d0a29b; }
+.project-console { height: 52px; overflow: auto; margin-top: 14px; padding: 9px 13px; border: 1px solid #292e26; border-radius: 7px; background: #10110e; color: #a9bc89; font: 10px/1.7 'DM Mono', monospace; }
+@media (max-width: 1050px) { .editor-controls { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 1050px) { .workspace { padding-left: 32px; padding-right: 32px; } }
