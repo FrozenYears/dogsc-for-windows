@@ -92,6 +92,7 @@ app.innerHTML = `
             <label class="field"><span>显示器索引</span><select id="monitor"><option value="0">正在枚举…</option></select></label>
             <label class="field"><span>帧率</span><select id="fps"><option>30</option><option selected>60</option><option>90</option><option>120</option></select></label>
           </div>
+          <div class="field-row"><label class="field"><span>采集源</span><select id="capture-mode"><option value="monitor">显示器</option><option value="window">窗口</option></select></label><label class="field"><span>窗口</span><select id="window-target" disabled><option value="">没有窗口</option></select></label></div>
           <label class="field"><span>区域（可选，x,y,width,height）</span><input id="region" type="text" spellcheck="false" placeholder="整块显示器" /></label>
           <div class="field-row">
             <label class="field"><span>编码器</span><select id="codec"><option value="auto" selected>自动选择</option><option value="hevc">HEVC</option><option value="h264">H.264</option><option value="prores">ProRes 422</option></select></label>
@@ -141,6 +142,8 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const directory = $("directory") as HTMLInputElement;
 const monitor = $("monitor") as HTMLSelectElement;
 const region = $("region") as HTMLInputElement;
+const captureMode = $("capture-mode") as HTMLSelectElement;
+const windowTarget = $("window-target") as HTMLSelectElement;
 const fps = $("fps") as HTMLSelectElement;
 const codec = $("codec") as HTMLSelectElement;
 const duration = $("duration") as HTMLInputElement;
@@ -586,6 +589,13 @@ function renderProjectLibrary() {
   }
 }
 
+function updateCaptureMode() {
+  const isWindow = captureMode.value === "window";
+  monitor.disabled = isWindow;
+  region.disabled = isWindow;
+  windowTarget.disabled = !isWindow;
+}
+
 async function refreshTargets() {
   try {
     const targets = await runCaptureTargets();
@@ -596,10 +606,19 @@ async function refreshTargets() {
       option.textContent = `${item.primary ? "主显示器" : "显示器"} · ${item.index} · ${item.width}×${item.height}`;
       monitor.append(option);
     }
+    windowTarget.replaceChildren();
+    for (const item of targets.windows) {
+      const option = document.createElement("option");
+      option.value = String(item.hwnd);
+      option.textContent = `${item.title}${item.minimized ? " · 最小化" : ""}`;
+      windowTarget.append(option);
+    }
     if (targets.monitors.length === 0) projectLog("没有可用显示器", false);
+    if (targets.windows.length === 0) projectLog("没有可用窗口", true);
+    updateCaptureMode();
   } catch (error) {
     monitor.innerHTML = '<option value="0">主显示器 · 0</option>';
-    projectLog(`显示器枚举失败：${String(error)}`, false);
+    projectLog(`采集目标枚举失败：${String(error)}`, false);
   }
 }
 
@@ -845,6 +864,8 @@ window.addEventListener("beforeunload", (event) => {
   }
 });
 void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
+captureMode.addEventListener("change", updateCaptureMode);
+updateCaptureMode();
 void refreshTargets();
 
 
@@ -888,9 +909,16 @@ function stopTimer() {
 
 start.addEventListener("click", async () => {
   try {
-    const args = ["record", directory.value.trim(), "--monitor", monitor.value, "--fps", fps.value, "--codec", codec.value];
+    const args = ["record", directory.value.trim()];
+    if (captureMode.value === "window") {
+      if (!windowTarget.value) throw new Error("没有可用窗口目标");
+      args.push("--window", windowTarget.value);
+    } else {
+      args.push("--monitor", monitor.value);
+    }
+    args.push("--fps", fps.value, "--codec", codec.value);
     const seconds = Number(duration.value);
-    if (region.value.trim()) args.push("--region", region.value.trim());
+    if (captureMode.value !== "window" && region.value.trim()) args.push("--region", region.value.trim());
     if (Number.isFinite(seconds) && seconds > 0) args.push("--duration", String(seconds));
     if (systemAudio.checked) args.push("--system-audio");
     if (microphone.checked) args.push("--microphone");
