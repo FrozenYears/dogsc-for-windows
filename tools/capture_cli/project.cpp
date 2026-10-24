@@ -421,6 +421,19 @@ RecorderProject apply_edit(const RecorderProject& project, std::wstring_view ope
         if (count != 1) throw std::invalid_argument("split 需要 output-time");
         result = ProjectTimelineEditing::split_primary_segment(
             project, parse_double(arguments[0], "output-time"), new_uuid(project), duration);
+    } else if (operation == L"mosaic") {
+        if (count != 8) throw std::invalid_argument("mosaic 需要 start、duration、x、y、width、height、blur|spotlight、intensity");
+        MosaicClip clip;
+        clip.id = new_uuid(project);
+        clip.timing = {parse_double(arguments[0], "start"), parse_double(arguments[1], "duration")};
+        clip.source_rect = NormalizedOverlayRect{parse_double(arguments[2], "x"), parse_double(arguments[3], "y"),
+                                                 parse_double(arguments[4], "width"), parse_double(arguments[5], "height")}.clamped();
+        const auto style = std::wstring_view(arguments[6]);
+        if (style == L"blur") clip.style = MosaicEffectStyle::kBlur;
+        else if (style == L"spotlight") clip.style = MosaicEffectStyle::kSpotlight;
+        else throw std::invalid_argument("mosaic style 需要 blur/spotlight");
+        clip.intensity = std::clamp(parse_double(arguments[7], "intensity"), 0.0, 1.0);
+        result = ProjectTimelineEditing::inserting_mosaic(project, clip);
     } else {
         const bool remove = operation == L"remove";
         if ((remove && count != 1) || (!remove && count < 2)) {
