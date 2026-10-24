@@ -139,6 +139,9 @@ json snapshot(const RecorderProject& project, TimeInterval full_duration) {
 std::filesystem::path history_directory(const std::filesystem::path& path) {
     return path.parent_path() / L".project-history";
 }
+std::filesystem::path draft_path(const std::filesystem::path& path) {
+    return path.parent_path() / L".project-draft.json";
+}
 
 struct HistoryState {
     std::vector<std::string> states;
@@ -275,6 +278,7 @@ void attach_history(json& result, const std::filesystem::path& path) {
         {"canUndo", !history.states.empty() && history.current > 0},
         {"canRedo", !history.states.empty() && history.current + 1 < history.states.size()},
     };
+    result["session"] = {{"dirty", std::filesystem::exists(draft_path(path))}};
 }
 
 json list_projects(const std::filesystem::path& root) {
@@ -325,6 +329,21 @@ json rename_project(const std::filesystem::path& project_path, std::wstring_view
     std::filesystem::rename(source, target, error);
     if (error) throw std::runtime_error("工程重命名失败: " + error.message());
     return json{{"name", target.filename().string()}, {"path", target.string()}};
+}
+void ensure_draft(const std::filesystem::path& path) {
+    const auto draft = draft_path(path);
+    if (std::filesystem::exists(draft)) return;
+    copy_file_atomically(path, draft);
+}
+
+RecorderProject read_draft(const std::filesystem::path& path) {
+    const auto draft = draft_path(path);
+    if (!std::filesystem::exists(draft)) throw std::runtime_error("工程没有未保存草稿");
+    return read_project(draft);
+}
+
+void write_draft(const std::filesystem::path& path, const RecorderProject& project) {
+    write_text_atomically(draft_path(path), ProjectJson::encode(project), L".dogsc-draft.tmp");
 }
 RecorderProject apply_edit(const RecorderProject& project, std::wstring_view operation,
                            int count, wchar_t** arguments) {
@@ -385,6 +404,54 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
         return 0;
     }
     const auto normalized_path = normalize_project_path(project_path);
+    if (action == L"begin") {
+        if (argument_count != 0) throw std::invalid_argument("begin 不接受额外参数");
+        ensure_draft(normalized_path);
+        const auto draft = read_draft(normalized_path);
+        const auto duration = full_source_duration(draft);
+        auto output = snapshot(draft, duration);
+        attach_history(output, normalized_path);
+        output["session"]["dirty"] = false;
+        std::cout << output.dump(2) << '\n';
+        return 0;
+    }
+    if (action == L"edit-draft") {
+        if (argument_count < 1) throw std::invalid_argument("edit-draft 缺少操作");
+        const auto draft = read_draft(normalized_path);
+        const auto duration = full_source_duration(draft);
+        const auto edited = apply_edit(draft, arguments[0], argument_count - 1, arguments + 1);
+        write_draft(normalized_path, edited);
+        auto output = snapshot(edited, duration);
+        attach_history(output, normalized_path);
+        output["session"]["dirty"] = true;
+        std::cout << output.dump(2) << '\n';
+        return 0;
+    }
+    if (action == L"save") {
+        if (argument_count != 0) throw std::invalid_argument("save 不接受额外参数");
+        const auto draft = read_draft(normalized_path);
+        const auto duration = full_source_duration(draft);
+        commit_project(normalized_path, draft);
+        std::error_code error;
+        std::filesystem::remove(draft_path(normalized_path), error);
+        auto output = snapshot(draft, duration);
+        attach_history(output, normalized_path);
+        output["session"]["dirty"] = false;
+        std::cout << output.dump(2) << '\n';
+        return 0;
+    }
+    if (action == L"discard") {
+        if (argument_count != 0) throw std::invalid_argument("discard 不接受额外参数");
+        std::error_code error;
+        std::filesystem::remove(draft_path(normalized_path), error);
+        const auto project = read_project(normalized_path);
+        const auto duration = full_source_duration(project);
+        auto output = snapshot(project, duration);
+        attach_history(output, normalized_path);
+        output["session"]["dirty"] = false;
+        std::cout << output.dump(2) << '\n';
+        return 0;
+    }
     auto project = read_project(normalized_path);
     const auto duration = full_source_duration(project);
     if (action == L"inspect") {
@@ -403,7 +470,7 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
         std::cout << output.dump(2) << '\n';
         return 0;
     }
-    if (action != L"edit") throw std::invalid_argument("项目动作仅支持 inspect/edit/undo/redo/rename");
+    if (action != L"edit") throw std::invalid_argument("项目动作仅支持 inspect/edit/undo/redo/rename/begin/edit-draft/save/discard");
     if (argument_count < 1) throw std::invalid_argument("edit 缺少操作");
     const auto edited = apply_edit(project, arguments[0], argument_count - 1, arguments + 1);
     commit_project(normalized_path, edited);

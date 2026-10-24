@@ -88,8 +88,8 @@ M0  核心层 + 对拍工具 + 契约定义（无 UI / 无 GPU）
 - **M0**：核心模型、时间线、JSON、`scene_dump` 已落地。Release clean build 与 6/6 测试通过。
 - **M1**：WGC/WASAPI/MF 采集 CLI 已有本机硬件 smoke；HEVC/H.264 可用厂商硬件 MFT，ProRes 使用动态 FFmpeg。短时采集与恢复验证不等于长时 4K60、干净系统 HEVC 可用性、异机同步或发布合规通过。
 - **M2a**：D2D/WARP 离屏 `IFrameCompositor` 已实现完整六层合成，并有实际读回像素与失败路径 smoke。尚无固定基准 PNG/PSNR 对拍，因此 §5 的画质阈值未宣告通过。
-- **桌面壳**：Tauri v2 中文录制工作区已构建 NSIS 安装包；P1a GUI 已验证项目库枚举/打开/重命名、分割、裁切、变速、主轨重排和多步撤销/重做；P2a 已接入单帧 SourceReader→BMP data URI，P2b 已把持久 SourceReader stream 接入 Tauri child、加入 30fps 单飞播放请求，并将单帧接入 `FrameSceneEvaluator`→D2D/WARP；最新包 GUI H.264 0/0.1、跨工程 HEVC 0s、0.2s 播放头和 0s D2D 合成预览均通过；自动保存、脏状态、关闭确认、崩溃恢复、吸附、DXGI surface、硬背压、丢帧统计和完整预览仍未完成。
-- **后续未完成**：Tauri/DXGI 实时预览与无撕裂播放、Tauri 完整编辑器、SourceReader 时间线解码/导出、自动保存与关闭恢复、完整资源生命周期、长时采集/跨设备矩阵和 FFmpeg 分发材料。
+- **桌面壳**：Tauri v2 中文录制工作区已构建 NSIS 安装包；P1a GUI 已验证项目库枚举/打开/重命名、分割、裁切、变速、主轨重排和多步撤销/重做；P1b 已接入 draft session、去抖自动保存、flush/两次失败重试、discard 和 beforeunload guard；P2a 已接入单帧 SourceReader→BMP data URI，P2b 已把持久 SourceReader stream 接入 Tauri child、30fps 单飞请求和 SourceReader→D2D/WARP 单帧合成；崩溃恢复清单、吸附、DXGI surface、硬背压、丢帧统计和完整预览仍未完成。
+- **后续未完成**：崩溃恢复清单、Tauri/DXGI 实时预览与无撕裂播放、Tauri 完整编辑器、SourceReader 时间线解码/导出、完整资源生命周期、长时采集/跨设备矩阵和 FFmpeg 分发材料。
 - **ProRes 性能风险已实测**：本机 1 秒录制，720p30 收到 35 帧；1080p30 收到 5 帧；1440p30 收到 3 帧；后两者各重复补帧 25/27 次。当前 CPU 编码路径仅 720p 样本达标，ProRes 不可作为已通过的实时高清录制路径。
 
 以上状态只代表仓库实现与本机测试，不代表完整产品可发布。

@@ -13,8 +13,8 @@
 | Capture | 录制标记 | 未实现 | orchestration/project | xiaoying marker flow | 录制中标记→工程→编辑器 |
 | Project | project.json 编解码 | 已验收 | `project_json` | 两仓库字段/保存语义 | 读写逐字段稳定 |
 | Project | 工程库/最近项目 | P1a 已验收项目库枚举、打开、重命名；最近项目排序未实现 | Tauri + project service | xiaoying `library` | 枚举、打开、重命名、最近项目 |
-| Project | 原子保存/previous/recovery | P1a 已验收 `.project-history` 多步版本、previous、原子替换；崩溃恢复未完成 | project store | adrian save/recovery | 中断写入后恢复 |
-| Project | 自动保存/关闭确认 | 未实现 | orchestration/Tauri | 两仓库 dirty-state | 脏工程关闭/重启恢复 |
+| Project | 原子保存/previous/recovery | P1a/P1b 已验收 `.project-history` 多步版本、previous、原子替换和 draft discard；崩溃恢复清单未完成 | project store | adrian save/recovery | 中断写入后恢复 |
+| Project | 自动保存/关闭确认 | P1b 部分已验收：draft、去抖自动保存、flush、两次重试和 beforeunload guard；崩溃恢复未完成 | orchestration/Tauri | 两仓库 dirty-state | 脏工程关闭/重启恢复 |
 | Timeline | 分割/裁切/删除 | GUI 已验收 | core + Tauri | 两仓库 timeline controls | 重载后几何一致 |
 | Timeline | 变速 | GUI 已验收 | core + Tauri | xiaoying speed regions | 0.5×…100×边界、音画同步 |
 | Timeline | 重排/吸附 | P1a GUI 已验收重排；吸附未实现 | core + Tauri | adrian timeline drag | 非 no-op 顺序断言、吸附边界 |

@@ -29,6 +29,7 @@ type ProjectSnapshot = {
   outputDuration: number;
   segments: ProjectSegment[];
   history: { canUndo: boolean; canRedo: boolean };
+  session: { dirty: boolean };
 };
 
 type ProjectLibraryItem = {
@@ -112,7 +113,7 @@ app.innerHTML = `
             <button id="project-open" class="secondary" type="button">打开工程</button>
           </div>
           <div class="project-rename-row"><label class="field"><span>工程名称</span><input id="project-rename-name" type="text" spellcheck="false" placeholder="新工程目录名" /></label><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
-          <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div class="project-history-actions"><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
+          <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div><strong id="project-save-state">未打开</strong><span>保存状态</span></div><div class="project-history-actions"><button id="project-save" class="secondary" type="button" disabled>保存</button><button id="project-discard" class="secondary danger" type="button" disabled>放弃草稿</button><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
           <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
           <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
           <div class="editor-controls">
@@ -172,6 +173,11 @@ const projectPreviewImage = $("project-preview-image") as HTMLImageElement;
 const projectPreviewFrame = $("project-preview-frame") as HTMLButtonElement;
 const projectPreviewStatus = $("project-preview-status");
 const projectPreviewPlay = $("project-preview-play") as HTMLButtonElement;
+const projectSaveState = $("project-save-state");
+const projectSave = $("project-save") as HTMLButtonElement;
+const projectDiscard = $("project-discard") as HTMLButtonElement;
+let autoSaveTimer: number | undefined;
+let projectCommandBusy = false;
 let previewPlaying = false;
 let previewPending = false;
 
@@ -418,6 +424,7 @@ function renderProjectSnapshot() {
     projectTitle.textContent = "未打开工程";
     projectDuration.textContent = "—";
     projectSegmentCount.textContent = "—";
+    projectSaveState.textContent = "未打开";
     projectPreviewImage.removeAttribute("src");
     projectPreviewStatus.textContent = "未加载预览";
     timeline.innerHTML = '<span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span>';
@@ -427,6 +434,7 @@ function renderProjectSnapshot() {
   projectTitle.textContent = snapshot.project.title;
   projectDuration.textContent = formatSeconds(snapshot.outputDuration);
   projectSegmentCount.textContent = String(snapshot.segments.length);
+  projectSaveState.textContent = snapshot.session?.dirty ? "草稿未保存" : "已保存";
   const previous = editSegment.value;
   editSegment.innerHTML = '<option value="">未选择</option>';
   for (const segment of snapshot.segments) {
@@ -469,6 +477,9 @@ function updateEditorButtons() {
   projectRename.disabled = !hasProject || !projectRenameName.value.trim();
   projectPreviewFrame.disabled = !hasProject;
   projectPreviewPlay.disabled = !hasProject;
+  const dirty = snapshot?.session?.dirty ?? false;
+  projectSave.disabled = !hasProject || !dirty || projectCommandBusy;
+  projectDiscard.disabled = !hasProject || !dirty || projectCommandBusy;
 }
 
 function renderProjectLibrary() {
@@ -512,21 +523,80 @@ async function refreshLibrary() {
   }
 }
 
+function scheduleAutoSave() {
+  if (autoSaveTimer !== undefined) window.clearTimeout(autoSaveTimer);
+  projectSaveState.textContent = "待保存";
+  autoSaveTimer = window.setTimeout(() => { autoSaveTimer = undefined; void saveProjectDraft(); }, 800);
+}
+
+async function saveProjectDraft(): Promise<boolean> {
+  if (!projectFile || !projectSnapshot?.session?.dirty) return true;
+  projectCommandBusy = true;
+  projectSaveState.textContent = "保存中…";
+  updateEditorButtons();
+  try {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        projectSnapshot = await runProjectCommand(["save", projectFile]);
+        renderProjectSnapshot();
+        projectLog("草稿已自动保存", true);
+        return true;
+      } catch (error) {
+        lastError = error;
+        if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 120));
+      }
+    }
+    projectSaveState.textContent = "保存失败";
+    projectLog(`自动保存失败：${String(lastError)}`, false);
+    return false;
+  } finally {
+    projectCommandBusy = false;
+    updateEditorButtons();
+  }
+}
+
+async function flushProjectSave() {
+  if (autoSaveTimer !== undefined) {
+    window.clearTimeout(autoSaveTimer);
+    autoSaveTimer = undefined;
+  }
+  return await saveProjectDraft();
+}
+
+async function discardProjectDraft() {
+  if (!projectFile || !projectSnapshot?.session?.dirty) return;
+  projectCommandBusy = true;
+  try {
+    projectSnapshot = await runProjectCommand(["discard", projectFile]);
+    renderProjectSnapshot();
+    projectLog("已放弃未保存草稿", false);
+  } catch (error) {
+    projectLog(`放弃草稿失败：${String(error)}`, false);
+  } finally {
+    projectCommandBusy = false;
+    updateEditorButtons();
+  }
+}
+
 async function loadProject(value: string) {
   const path = normalizeProjectFile(value);
   if (!path) { projectLog("请输入 project.json 路径", false); return; }
+  if (!(await flushProjectSave())) return;
   await stopPreviewStream();
+  projectCommandBusy = true;
   projectOpen.disabled = true;
   projectLog(`正在打开 ${path}`, true);
   try {
-    projectSnapshot = await runProjectCommand(["inspect", path]);
+    projectSnapshot = await runProjectCommand(["begin", path]);
     projectFile = path;
     projectPathInput.value = path;
     renderProjectSnapshot();
-    projectLog("工程已打开", false);
+    projectLog(projectSnapshot.session.dirty ? "已恢复未保存草稿" : "工程已打开", false);
   } catch (error) {
     projectLog(`打开工程失败：${String(error)}`, false);
   } finally {
+    projectCommandBusy = false;
     projectOpen.disabled = false;
     updateEditorButtons();
   }
@@ -534,21 +604,24 @@ async function loadProject(value: string) {
 
 async function applyProjectEdit(operation: string, ...args: string[]) {
   if (!projectFile) return;
+  projectCommandBusy = true;
   projectOpen.disabled = true;
   try {
-    projectSnapshot = await runProjectCommand(["edit", projectFile, operation, ...args]);
+    projectSnapshot = await runProjectCommand(["edit-draft", projectFile, operation, ...args]);
     renderProjectSnapshot();
-    projectLog(`已应用 ${operation}，project.previous.json 已保留`, false);
+    projectLog(`已应用 ${operation} 到草稿，自动保存已排队`, false);
+    scheduleAutoSave();
   } catch (error) {
     projectLog(`编辑失败：${String(error)}`, false);
   } finally {
+    projectCommandBusy = false;
     projectOpen.disabled = false;
     updateEditorButtons();
   }
 }
-
 async function applyProjectHistory(action: "undo" | "redo") {
-  if (!projectFile) return;
+  if (!projectFile || !(await flushProjectSave())) return;
+  projectCommandBusy = true;
   projectOpen.disabled = true;
   try {
     projectSnapshot = await runProjectCommand([action, projectFile]);
@@ -557,13 +630,15 @@ async function applyProjectHistory(action: "undo" | "redo") {
   } catch (error) {
     projectLog(`${action === "undo" ? "撤销" : "重做"}失败：${String(error)}`, false);
   } finally {
+    projectCommandBusy = false;
     projectOpen.disabled = false;
     updateEditorButtons();
   }
 }
 
+
 async function renameProject() {
-  if (!projectFile || !projectRenameName.value.trim()) return;
+  if (!projectFile || !projectRenameName.value.trim() || !(await flushProjectSave())) return;
   projectRename.disabled = true;
   try {
     const renamed = await runProjectRename(projectFile, projectRenameName.value.trim());
@@ -605,6 +680,14 @@ projectRenameName.addEventListener("input", updateEditorButtons);
 projectRename.addEventListener("click", () => { void renameProject(); });
 projectPreviewFrame.addEventListener("click", () => { void loadPreviewFrame(); });
 projectPreviewPlay.addEventListener("click", () => { void togglePreviewPlay(); });
+projectSave.addEventListener("click", () => { void flushProjectSave(); });
+projectDiscard.addEventListener("click", () => { void discardProjectDraft(); });
+window.addEventListener("beforeunload", (event) => {
+  if (projectCommandBusy || projectSnapshot?.session?.dirty) {
+    event.preventDefault();
+    event.returnValue = "工程仍有未保存草稿";
+  }
+});
 void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
 
 
