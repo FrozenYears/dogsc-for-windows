@@ -1,6 +1,6 @@
 #include "dogsc/frame_compositor.hpp"
 
-// M0 阶段只提供契约与图层顺序校验；具体后端在 M2a / M2b 实现。
+// 共享层仅负责 API 无关的契约和图层校验；Direct2D 后端位于 render/d2d。
 
 namespace dogsc {
 namespace {

@@ -1,4 +1,5 @@
 #include "commands.hpp"
+#include "dogsc/segmented_writer.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -11,7 +12,12 @@ namespace dogsc::cli {
 using json = nlohmann::ordered_json;
 namespace {
 const char* codec_name(capture::VideoCodec codec) {
-    return codec == capture::VideoCodec::hevc ? "hevc" : "h264";
+    switch (codec) {
+    case capture::VideoCodec::hevc: return "hevc";
+    case capture::VideoCodec::h264: return "h264";
+    case capture::VideoCodec::prores422: return "prores422";
+    }
+    return "unknown";
 }
 json encoders() {
     json result = json::array();
@@ -87,9 +93,11 @@ int probe(const std::filesystem::path& directory) {
     for (const auto attempt : {Trial{capture::VideoCodec::hevc, true},
                               Trial{capture::VideoCodec::h264, true},
                               Trial{capture::VideoCodec::hevc, false},
-                              Trial{capture::VideoCodec::h264, false}}) {
+                              Trial{capture::VideoCodec::h264, false},
+                              Trial{capture::VideoCodec::prores422, false}}) {
         const auto codec = attempt.codec;
-        const auto container = attempt.fragmented ? "fragmented" : "standard";
+        const auto container = codec == capture::VideoCodec::prores422 ? "mov"
+            : attempt.fragmented ? "fragmented" : "standard";
         json trial{{"codec", codec_name(codec)}, {"container", container},
             {"width", width}, {"height", height},
             {"frameRate", 30}, {"frameCount", frames}, {"succeeded", false}};
@@ -97,31 +105,44 @@ int probe(const std::filesystem::path& directory) {
         trial["submittedFrames"] = 0;
         try {
             capture::WriterOptions options;
-            options.path = (directory / (std::string(codec_name(codec)) + "-" + container + ".mp4")).wstring();
+            const auto extension = codec == capture::VideoCodec::prores422 ? ".mov" : ".mp4";
+            options.path = (directory / (std::string(codec_name(codec)) + "-" + container + extension)).wstring();
             options.fragmented = attempt.fragmented;
             options.width = width;
             options.height = height;
             options.frame_rate = 30;
             options.codec = codec;
-            capture::MediaWriter writer(device.get(), options);
-            trial["selectedEncoder"] = writer.video_encoder_name();
-            trial["selectedHardware"] = writer.video_encoder_is_hardware();
-            trial["stage"] = "encoding";
-            for (UINT frame = 0; frame < frames; ++frame) {
-                for (UINT y = 0; y < height; ++y) {
-                    for (UINT x = 0; x < width; ++x) {
-                        pixels[static_cast<std::size_t>(y) * width + x] = 0xff000000U |
-                            (((x + frame * 8) % 256) << 16) | ((y % 256) << 8) | (frame * 7 % 256);
+            const auto submit_frames = [&](auto& writer) {
+                trial["stage"] = "encoding";
+                for (UINT frame = 0; frame < frames; ++frame) {
+                    for (UINT y = 0; y < height; ++y) {
+                        for (UINT x = 0; x < width; ++x) {
+                            pixels[static_cast<std::size_t>(y) * width + x] = 0xff000000U |
+                                (((x + frame * 8) % 256) << 16) | ((y % 256) << 8) | (frame * 7 % 256);
+                        }
                     }
+                    context->UpdateSubresource(texture.get(), 0, nullptr, pixels.data(), width * 4, 0);
+                    const auto time = static_cast<std::int64_t>(frame) * 10000000 / 30;
+                    const auto end = static_cast<std::int64_t>(frame + 1) * 10000000 / 30;
+                    writer.write_video(texture.get(), time, end - time);
+                    trial["submittedFrames"] = frame + 1;
                 }
-                context->UpdateSubresource(texture.get(), 0, nullptr, pixels.data(), width * 4, 0);
-                const auto time = static_cast<std::int64_t>(frame) * 10000000 / 30;
-                const auto end = static_cast<std::int64_t>(frame + 1) * 10000000 / 30;
-                writer.write_video(texture.get(), time, end - time);
-                trial["submittedFrames"] = frame + 1;
+            };
+            if (codec == capture::VideoCodec::prores422) {
+                capture::SegmentedWriter writer(device.get(), options);
+                trial["selectedEncoder"] = writer.video_encoder_name();
+                trial["selectedHardware"] = writer.video_encoder_is_hardware();
+                submit_frames(writer);
+                trial["stage"] = "finalization-and-remux";
+                writer.finalize(10'000'000);
+            } else {
+                capture::MediaWriter writer(device.get(), options);
+                trial["selectedEncoder"] = writer.video_encoder_name();
+                trial["selectedHardware"] = writer.video_encoder_is_hardware();
+                submit_frames(writer);
+                trial["stage"] = "finalization";
+                writer.finalize();
             }
-            trial["stage"] = "finalization";
-            writer.finalize();
             trial["succeeded"] = true;
             trial["stage"] = "complete";
             encoded = true;

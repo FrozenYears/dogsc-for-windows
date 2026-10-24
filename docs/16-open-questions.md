@@ -16,6 +16,16 @@
 | D8 | 采集排除语义 | **`SetWindowExclusionList` 为主**（Win11 24H2+，按 `WindowId` 在单会话内排除）；旧 build 降级为采集后遮挡回填 | 24H2 起有官方 per-session 排除接口，无需逐帧回填；遮挡仅作降级 |
 | D9 | 四路时钟基准 | **QPC 为唯一基准**，各源启动时记录 QPC 偏移 | 与 mac 端 `CMSyncConvertTime` 语义最接近，实现清晰；WASAPI device position 长期存在漂移 |
 | D12 | HEVC 崩溃恢复封装 | HEVC 使用约 10 秒独立普通 MP4 分段，停止时经 Media Foundation 压缩样本直通无损合并；保留完整分段恢复入口 | 本机 NVIDIA HEVC MFT 可输出普通 MP4，但 `MFCreateFMPEG4MediaSink` 拒绝 HEVC；原生分段 + MF remux 不加外部库。已实测 12 秒 HEVC Main 2560×1600@60 + AAC 分为 10s/2s 两段并无损合并、恢复文件可解码；跨设备/驱动仍需验证 |
+| D13 | ProRes 422 录制 | 采用动态链接的 LGPL FFmpeg/libavcodec ProRes 422 Standard 编码与 MOV mux；不启用 GPL/nonfree 扩展，并随发布提供对应源码、构建信息和许可证声明 | 用户为保留上游 ProRes 422 选择该路径；Microsoft Media Foundation 支持格式文档未列 ProRes。代价是 DLL/包体、CPU 编码负载、LGPL 动态重链接义务和专利辖区风险；最终须实测编码质量/性能并做合规审查 |
+| D14 | 剪辑切点的指针轨求值 | 场景输入按保留片段提供 output-range 与映射后的指针事件，保留切点端点桥接和自动缩放重新锚定，不接受平坦事件轨近似 | 上游 `ProjectPointerTrack` 明确基于切点重建路径与 0.28 秒桥接；平坦输出时间事件无法判断删除区间与切点，用户选择优先保留原行为 |
+
+## D15 M2a 与 ProRes 实测更新（2026-10-24）
+
+- `src/render/d2d` 已实现 D2D/WARP 离屏合成：背景、屏幕、光标、spotlight、摄像头、stickers 六层，含裁切、圆角、阴影、Gaussian blur、焦点、点击效果、摄像头圆形布局、贴图遮罩和透视投影；`d2d_warp_smoke` 已读回 BGRA 像素并验证多层输出与失败不发布旧帧。
+- Release clean build 与 6/6 CTest 通过。该证据覆盖离屏 smoke，不等价于实时预览、完整媒体解码或编辑器完成。
+- ProRes 422 Standard 720p30 录制 1 秒收到 35 帧；1080p30 收到 5 帧并重复 25 帧；1440p30 收到 3 帧并重复 27 帧。720p/1080p/1440p 的 wall time 约 1.75/2.36/3.55 秒；这证明当前 CPU ProRes 路径未达到这些分辨率的实时采集验收，不能标记为通过。
+- 720p ProRes 分片恢复经 `ffprobe` 确认为 `prores` Standard、`apcn`、`yuv422p10le`、30 帧，以及 AAC LC 48 kHz/2 声道；完整文件经 FFmpeg 解码无报错。当前只证明本机配置的短录制与恢复，不证明跨硬件性能。
+- 合规边界仍未关闭：仓库使用 vcpkg manifest 的动态 FFmpeg 库配置，但没有提交对应 FFmpeg 源码、补丁包、构建复现材料或发布 notice；发布前必须按 FFmpeg 官方 LGPL 清单完成材料与法律审查。
 
 ## D7–D9 的后续核查要求
 

@@ -1,28 +1,19 @@
 #pragma once
 
 #include <optional>
+#include <utility>
 #include <vector>
 
-#include "dogsc/basic_types.hpp"
 #include "dogsc/core_types.hpp"
 #include "dogsc/frame_compositor.hpp"
 #include "dogsc/project_timeline.hpp"
 #include "dogsc/timeline_map.hpp"
 
+#include "dogsc/frame_tracks.hpp"
+
 namespace dogsc {
+struct RecorderProject;
 
-/// 叠加层（模糊 / 聚光 / 贴图）的时间区间，端开区间。
-struct OverlayTiming {
-    TimeInterval start_time = 0;
-    TimeInterval duration = 3;
-
-    constexpr bool operator==(const OverlayTiming&) const = default;
-
-    [[nodiscard]] TimeInterval end_time() const { return start_time + duration; }
-    [[nodiscard]] bool contains(TimeInterval time) const {
-        return time >= start_time && time < end_time();
-    }
-};
 
 /// 开场动画元素。顺序即「聚拢 / 侧滑 / 轻 3D」的入场次序。
 enum class OpeningSequenceElement {
@@ -74,6 +65,20 @@ struct OpeningSample {
 };
 
 /// 唯一的逐帧解释器。
+struct FrameEvaluationInputs {
+    CompositionSize screen_source_size{};
+    std::optional<CompositionSize> camera_source_size;
+    double source_aspect_ratio = 16.0 / 9.0;
+    const ProjectPointerTrack* pointer_track = nullptr;
+    std::optional<PointerTrackEvaluation> pointer_evaluation;
+    const CursorAssetMetrics* cursor_metrics = nullptr;
+    const std::vector<std::pair<CursorAssetID, CursorAssetMetrics>>* cursor_metrics_by_asset = nullptr;
+    const ZoomAnimationTrack* zoom_track = nullptr;
+    const ScreenMotionTrack* screen_motion_track = nullptr;
+    const CameraMotionTrack* camera_motion_track = nullptr;
+    const StickerTransitionTrack* sticker_track = nullptr;
+};
+
 ///
 /// 渲染后端只接收它产出的不可变计划，绝不读取工程模型。
 class FrameSceneEvaluator {
@@ -103,6 +108,16 @@ public:
                                        CompositionSize canvas_size, bool has_cursor,
                                        bool has_spotlight, bool camera_visible,
                                        bool has_stickers);
+    /// 对工程模型做一次完整、不可变的逐帧解释。
+    static FrameScene scene(const RecorderProject& project, TimeInterval time,
+                            CompositionSize canvas_size, const FrameEvaluationInputs& inputs = {},
+                            std::optional<TimeInterval> output_duration = {},
+                            FrameColorContract color = FrameColorContract::sdr_desktop());
+    static FrameRenderPlan render_plan(const RecorderProject& project, TimeInterval presentation_time,
+                                       TimeInterval output_duration, int frame_rate,
+                                       CompositionSize canvas_size,
+                                       const FrameEvaluationInputs& inputs = {},
+                                       FrameColorContract color = FrameColorContract::sdr_desktop());
 
     /// 平滑阶跃（smootherstep），用于贴图弹出与转场。
     static double smoother_step(double value);

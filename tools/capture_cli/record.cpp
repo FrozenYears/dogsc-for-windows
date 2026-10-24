@@ -152,12 +152,15 @@ int record(const RecordOptions& options) {
         std::unique_ptr<AudioTrack> microphone;
         if (options.system_audio) system = std::make_unique<AudioTrack>(capture::AudioSource::system);
         if (options.microphone) microphone = std::make_unique<AudioTrack>(capture::AudioSource::microphone);
+        const bool prores = options.codec == "prores" || options.codec == "prores422";
+        const auto extension = prores ? ".mov" : ".mp4";
         capture::WriterOptions writer_options;
-        writer_options.path = (options.directory / "screen.mp4").wstring();
+        writer_options.path = (options.directory / (std::string("screen") + extension)).wstring();
         writer_options.width = screen.width();
         writer_options.height = screen.height();
         writer_options.frame_rate = static_cast<UINT>(options.frame_rate);
-        writer_options.codec = options.codec == "h264" ? capture::VideoCodec::h264 : capture::VideoCodec::hevc;
+        writer_options.codec = prores ? capture::VideoCodec::prores422
+            : options.codec == "h264" ? capture::VideoCodec::h264 : capture::VideoCodec::hevc;
         if (system) writer_options.audio_formats.push_back(system->format);
         std::unique_ptr<capture::SegmentedWriter> video;
         try {
@@ -177,7 +180,7 @@ int record(const RecordOptions& options) {
         std::unique_ptr<capture::SegmentedWriter> camera_video;
         if (camera) {
             capture::WriterOptions camera_options;
-            camera_options.path = (options.directory / "camera.mp4").wstring();
+            camera_options.path = (options.directory / (std::string("camera") + extension)).wstring();
             camera_options.width = camera->width();
             camera_options.height = camera->height();
             camera_options.frame_rate = static_cast<UINT>(options.frame_rate);
@@ -197,10 +200,12 @@ int record(const RecordOptions& options) {
             microphone->writer = microphone_writer.get();
         }
         if (system) system->writer = video.get();
-        report["codec"] = writer_options.codec == capture::VideoCodec::hevc ? "hevc" : "h264";
+        report["codec"] = prores ? "prores422"
+            : writer_options.codec == capture::VideoCodec::hevc ? "hevc" : "h264";
         report["encoder"] = video->video_encoder_name();
         report["hardwareEncoder"] = video->video_encoder_is_hardware();
-        report["containerStrategy"] = "independent-10s-mp4-then-native-remux";
+        report["containerStrategy"] = prores ? "independent-10s-mov-then-ffmpeg-remux"
+            : "independent-10s-mp4-then-native-remux";
         report["status"] = "recording";
         write_text(options.directory / "capture.json", report.dump(2));
         if (system) system->source->start();
@@ -387,6 +392,50 @@ int record(const RecordOptions& options) {
         project.created_at = date;
         project.export_settings.frame_rate = options.frame_rate;
         project.camera.is_hidden = !camera;
+        project.capture.source = options.target.window ? CaptureSource::kWindow : CaptureSource::kDisplay;
+        project.capture.capture_frame_rate = static_cast<OutputFrameRate>(options.frame_rate);
+        project.capture.capture_codec = writer_options.codec == capture::VideoCodec::prores422
+            ? CaptureCodec::kProRes422
+            : writer_options.codec == capture::VideoCodec::h264 ? CaptureCodec::kH264 : CaptureCodec::kHevc;
+        project.capture.capture_resolution_limit = CaptureResolutionLimit::kNative;
+        project.capture.records_system_audio = system != nullptr;
+        project.capture.records_microphone = microphone != nullptr;
+        project.capture.records_camera = camera != nullptr;
+        if (camera) {
+            project.capture.camera_capture_resolution = CameraCaptureResolution{
+                static_cast<int>(camera->width()), static_cast<int>(camera->height())};
+        }
+        RECT source_bounds{};
+        if (options.target.window) {
+            if (GetClientRect(options.target.window, &source_bounds)) {
+                const int title_length = std::max(GetWindowTextLengthW(options.target.window), 0);
+                std::wstring title(static_cast<std::size_t>(title_length) + 1, L'\0');
+                const int title_count = GetWindowTextW(options.target.window, title.data(),
+                    static_cast<int>(title.size()));
+                title.resize(static_cast<std::size_t>(std::max(title_count, 0)));
+                if (!title.empty()) project.capture.window_name = winrt::to_string(title);
+            }
+        } else {
+            MONITORINFOEXW monitor_info{};
+            monitor_info.cbSize = sizeof(monitor_info);
+            if (GetMonitorInfoW(options.target.monitor, &monitor_info)) {
+                source_bounds = {0, 0, monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                    monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top};
+                project.capture.display_name = winrt::to_string(monitor_info.szDevice);
+            }
+        }
+        const auto& region = options.target.region;
+        const int source_width = source_bounds.right - source_bounds.left;
+        const int source_height = source_bounds.bottom - source_bounds.top;
+        if (region.right > region.left && region.bottom > region.top
+            && region.left >= 0 && region.top >= 0
+            && region.right <= source_width && region.bottom <= source_height) {
+            project.capture.area = NormalizedRect{
+                static_cast<double>(region.left) / source_width,
+                static_cast<double>(region.top) / source_height,
+                static_cast<double>(region.right - region.left) / source_width,
+                static_cast<double>(region.bottom - region.top) / source_height};
+        }
         project.media = ProjectMediaManifest{};
         const auto reference = [&](std::string path) {
             ProjectMediaReference media;
@@ -395,9 +444,9 @@ int record(const RecordOptions& options) {
             media.source_time_scale = 1;
             return media;
         };
-        project.media->screen = reference("screen.mp4");
+        project.media->screen = reference(prores ? "screen.mov" : "screen.mp4");
         project.media->pointer_events = reference("pointer.jsonl");
-        if (camera) project.media->camera = reference("camera.mp4");
+        if (camera) project.media->camera = reference(prores ? "camera.mov" : "camera.mp4");
         if (microphone) project.media->microphone = reference("microphone.m4a");
         write_text(options.directory / "project.json", ProjectJson::encode(project));
         report["status"] = "finalized";

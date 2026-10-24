@@ -1,9 +1,12 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
+#include "dogsc/basic_types.hpp"
 
 namespace dogsc {
+enum class CursorClickEffectStyle;
 
 /// `project.json` 中持久化的光标资源标识。
 ///
@@ -42,6 +45,9 @@ struct CursorAssetMetrics {
     double hotspot_x = 0;
     double hotspot_y = 0;
     double shadow_radius = 0;
+    HexColor click_color = HexColor::black();
+    std::optional<double> scale_reference_height;
+    constexpr bool operator==(const CursorAssetMetrics&) const = default;
 };
 
 /// 光标在画布上的 2D 布局结果。
@@ -57,16 +63,42 @@ struct CursorRenderLayout {
     double hotspot_y = 0;
     double click_effect_width = 0;
     double click_effect_height = 0;
+    double click_line_width = 0;
+    constexpr bool operator==(const CursorRenderLayout&) const = default;
+};
+
+struct CursorClickGeometryFrame {
+    CursorClickEffectStyle style{};
+    double progress = 0;
+    double primary_diameter = 0;
+    double primary_line_width = 0;
+    double primary_opacity = 0;
+    bool primary_is_filled = false;
+    double primary_glow_radius = 0;
+    double secondary_diameter = 0;
+    double secondary_line_width = 0;
+    double secondary_opacity = 0;
+    bool secondary_is_filled = false;
+    double secondary_glow_radius = 0;
+    double accent_offset = 0;
+    double accent_size = 0;
+    double accent_opacity = 0;
+    double max_footprint_diameter = 0;
+    constexpr bool operator==(const CursorClickGeometryFrame&) const = default;
 };
 
 /// 纯几何布局，不依赖任何渲染后端。
 class CursorRenderGeometry {
 public:
-    /// `point` 为热点在画布上的像素位置；`canvasShortEdge` 取画布短边。
-    /// 度量缺失或参数非有限时返回空，调用方应跳过光标图层。
+    static constexpr double kCanonicalHeight = 44;
+    static constexpr double kCanonicalShortEdge = 1080;
+    /// `point` 为热点在画布上的像素位置；输出尺度以 1080 短边 44px 为基准。
     static bool layout(double point_x, double point_y, double canvas_short_edge,
                        double style_size, const CursorAssetMetrics& metrics,
                        CursorRenderLayout& out);
+    [[nodiscard]] static std::optional<CursorClickGeometryFrame> click_geometry(
+        CursorClickEffectStyle style, double progress, double base_height,
+        double opacity_multiplier = 1.0, double scale_multiplier = 1.0);
 };
 
 }  // namespace dogsc

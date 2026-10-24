@@ -14,6 +14,7 @@
 #include <limits>
 #include <utility>
 
+#include "dogsc/ffmpeg_prores.hpp"
 namespace dogsc::capture {
 namespace {
 
@@ -371,6 +372,16 @@ void append_segment(SegmentReader& source, const MediaSegment& segment, RemuxOut
 void remux_segments(const std::vector<MediaSegment>& segments, const std::filesystem::path& output) {
     if (segments.empty() || output.empty()) {
         throw winrt::hresult_error(E_INVALIDARG, L"无损合并需要分段和输出路径。");
+    }
+    if (segments.front().path.extension() == L".mov") {
+        if (output.extension() != L".mov"
+            || std::any_of(segments.begin(), segments.end(), [](const MediaSegment& segment) {
+                return segment.path.extension() != L".mov";
+            })) {
+            throw winrt::hresult_error(E_INVALIDARG, L"ProRes 分段只能合并为 MOV 容器。");
+        }
+        ffmpeg_remux_segments(segments, output);
+        return;
     }
     std::int64_t previous_end = 0;
     for (const auto& segment : segments) {

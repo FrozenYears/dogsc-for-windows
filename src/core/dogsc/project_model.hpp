@@ -1,10 +1,11 @@
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "dogsc/basic_types.hpp"
+#include "dogsc/capture_configuration.hpp"
 #include "dogsc/core_types.hpp"
 #include "dogsc/cursor_asset.hpp"
 #include "dogsc/frame_scene_evaluator.hpp"
@@ -140,13 +141,6 @@ struct AudioStyle {
     constexpr bool operator==(const AudioStyle&) const = default;
 };
 
-enum class CameraShape {
-    kSquare,
-    kHorizontal,
-    kVertical,
-    kOriginal,
-    kCircle,
-};
 
 struct CameraStyle {
     CameraShape shape = CameraShape::kSquare;
@@ -264,6 +258,7 @@ struct ZoomClip {
     double exit_progress_offset = 0;
     std::optional<TimeInterval> preferred_enter_duration;
     std::optional<TimeInterval> preferred_exit_duration;
+    std::optional<FocusEffect> focus_effect;
 
     bool operator==(const ZoomClip&) const = default;
 
@@ -287,6 +282,7 @@ struct RecorderProject {
     std::string title = "未命名录制";
     /// ISO-8601 UTC 字符串；M0 原样保留，不做时区换算。
     std::string created_at;
+    CaptureConfiguration capture{};
     CanvasStyle canvas{};
     CameraStyle camera{};
     AudioStyle audio{};
@@ -295,6 +291,11 @@ struct RecorderProject {
     CursorStyle cursor_style{};
     ExportSettings export_settings{};
     SourceSequence source_sequence{};
+    std::map<Uuid, PrimarySegmentAudioOverrides, UuidLess> primary_segment_audio_overrides;
+    std::vector<ScreenMotionClip> screen_motion_clips;
+    std::vector<CameraMotionClip> camera_motion_clips;
+    std::vector<MosaicClip> mosaic_clips;
+    std::vector<StickerClip> sticker_clips;
     std::vector<ZoomClip> zoom_clips;
     std::vector<RecordingMarker> recording_markers{};
     std::optional<ProjectMediaManifest> media;

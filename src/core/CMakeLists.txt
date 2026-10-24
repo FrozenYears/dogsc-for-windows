@@ -4,12 +4,16 @@ add_library(dogsc_core STATIC
     basic_types.cpp
     cursor_asset.cpp
     frame_compositor.cpp
+    scene_geometry.cpp
     frame_scene_evaluator.cpp
+    frame_tracks.cpp
+    pointer_track.cpp
     media_timeline.cpp
     output_frame_schedule.cpp
     project_model.cpp
     project_timeline.cpp
     timeline_map.cpp
+    project_timeline_editing.cpp
     timeline_media_plan.cpp
     timing_guards.cpp
     project_json.cpp

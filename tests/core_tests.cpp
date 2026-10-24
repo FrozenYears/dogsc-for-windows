@@ -242,6 +242,312 @@ void test_project_json_round_trip() {
     EXPECT_EQ(ProjectJson::encode(decoded), encoded);
 }
 
+void test_project_json_capture_configuration_round_trip() {
+    using namespace dogsc;
+    RecorderProject project;
+    CaptureConfiguration& capture = project.capture;
+    capture.source = CaptureSource::kDevice;
+    capture.display_id = 0x12345678u;
+    capture.display_name = "主显示器";
+    capture.window_id = 0x87654321u;
+    capture.window_name = "测试窗口";
+    capture.selected_application_bundle_identifier = "com.example.app";
+    capture.selected_application_name = "示例应用";
+    capture.area = NormalizedRect{0.1, 0.2, 0.6, 0.7};
+    capture.device_id = "device-1";
+    capture.device_name = "设备一";
+    capture.capture_frame_rate = OutputFrameRate::fps120;
+    capture.capture_codec = CaptureCodec::kProRes422;
+    capture.capture_resolution_limit = CaptureResolutionLimit::kFullHD;
+    capture.hides_desktop_files = true;
+    capture.hides_dock = true;
+    capture.records_system_audio = false;
+    capture.system_audio_scope = SystemAudioScope::kSelectedApplication;
+    capture.records_microphone = true;
+    capture.microphone_device_id = "microphone-1";
+    capture.microphone_device_name = "麦克风一";
+    capture.records_camera = true;
+    capture.camera_device_id = "camera-1";
+    capture.camera_device_name = "摄像头一";
+    capture.camera_capture_resolution = CameraCaptureResolution{1920, 1080};
+
+    const std::string encoded = ProjectJson::encode(project);
+    for (const char* key : {"capture", "source", "displayID", "displayName", "windowID",
+                            "windowName", "selectedApplicationBundleIdentifier",
+                            "selectedApplicationName", "area", "deviceID", "deviceName",
+                            "captureFrameRate", "captureCodec", "captureResolutionLimit",
+                            "hidesDesktopFiles", "hidesDock", "recordsSystemAudio",
+                            "systemAudioScope", "recordsMicrophone", "microphoneDeviceID",
+                            "microphoneDeviceName", "recordsCamera", "cameraDeviceID",
+                            "cameraDeviceName", "cameraCaptureResolution"}) {
+        EXPECT_TRUE(encoded.find(std::string("\"") + key + "\"") != std::string::npos);
+    }
+
+    RecorderProject decoded;
+    ProjectJsonError error;
+    EXPECT_TRUE(ProjectJson::decode(encoded, decoded, error));
+    EXPECT_TRUE(decoded == project);
+    EXPECT_EQ(ProjectJson::encode(decoded), encoded);
+}
+
+void test_capture_configuration_defaults_and_missing_json_fields() {
+    using namespace dogsc;
+    const CaptureConfiguration defaults;
+    EXPECT_EQ(defaults.source, CaptureSource::kDisplay);
+    EXPECT_EQ(defaults.capture_frame_rate, OutputFrameRate::fps60);
+    EXPECT_EQ(defaults.capture_codec, CaptureCodec::kHevc);
+    EXPECT_EQ(defaults.capture_resolution_limit, CaptureResolutionLimit::kNative);
+    EXPECT_TRUE(defaults.records_system_audio);
+    EXPECT_FALSE(defaults.records_microphone);
+    EXPECT_FALSE(defaults.records_camera);
+
+    RecorderProject project;
+    ProjectJsonError error;
+    EXPECT_TRUE(ProjectJson::decode(R"({"version":27})", project, error));
+    EXPECT_EQ(project.capture, defaults);
+
+    EXPECT_TRUE(ProjectJson::decode(R"({"version":27,"capture":{}})", project, error));
+    EXPECT_EQ(project.capture.source, CaptureSource::kDisplay);
+    EXPECT_EQ(project.capture.capture_frame_rate, OutputFrameRate::fps60);
+    EXPECT_EQ(project.capture.capture_codec, CaptureCodec::kH264);
+    EXPECT_EQ(project.capture.capture_resolution_limit, CaptureResolutionLimit::kNative);
+    EXPECT_TRUE(project.capture.records_system_audio);
+    EXPECT_FALSE(project.capture.records_microphone);
+    EXPECT_FALSE(project.capture.records_camera);
+    EXPECT_FALSE(project.capture.display_id.has_value());
+    EXPECT_FALSE(project.capture.area.has_value());
+
+    const NormalizedRect constrained = NormalizedRect{-0.5, 0.8, 2, 0}.constrained();
+    EXPECT_NEAR(constrained.x, 0, 1e-12);
+    EXPECT_NEAR(constrained.y, 0.8, 1e-12);
+    EXPECT_NEAR(constrained.width, 1, 1e-12);
+    EXPECT_NEAR(constrained.height, 0.02, 1e-12);
+}
+
+void test_capture_dimensions_preserve_even_sizes_and_orientation() {
+    using namespace dogsc;
+    const CaptureDimensions compatible = CaptureDimensions::h264_compatible(5001, 3001);
+    EXPECT_EQ(compatible.width, 3838);
+    EXPECT_EQ(compatible.height, 2304);
+    EXPECT_EQ(compatible.width % 2, 0);
+    EXPECT_EQ(compatible.height % 2, 0);
+
+    const CaptureDimensions landscape = apply_capture_resolution_limit(
+        CaptureResolutionLimit::kUHD, CaptureDimensions{5000, 3000});
+    EXPECT_EQ(landscape.width, 3600);
+    EXPECT_EQ(landscape.height, 2160);
+    const CaptureDimensions portrait = apply_capture_resolution_limit(
+        CaptureResolutionLimit::kUHD, CaptureDimensions{3000, 5000});
+    EXPECT_EQ(portrait.width, 2160);
+    EXPECT_EQ(portrait.height, 3600);
+    EXPECT_EQ(apply_capture_resolution_limit(CaptureResolutionLimit::kNative,
+                                             CaptureDimensions{321, 123}),
+              (CaptureDimensions{321, 123}));
+}
+
+void test_project_json_timeline_tracks_round_trip() {
+    using namespace dogsc;
+    RecorderProject project;
+    const Uuid segment_id = uuid_from_last_byte(20);
+    PrimarySegmentAudioOverrides overrides;
+    overrides.system_volume = 0.31;
+    overrides.microphone_volume = 0.77;
+    overrides.is_system_muted = false;
+    overrides.is_microphone_muted = true;
+    project.primary_segment_audio_overrides[segment_id] = overrides;
+
+    FocusEffect focus_effect;
+    focus_effect.shape = FocusEffectShape::kLinear;
+    focus_effect.angle_degrees = 41;
+    focus_effect.target = FocusEffectTarget::kPointer;
+    focus_effect.center = {0.23, 0.78};
+    focus_effect.size = 0.62;
+    focus_effect.blur = 0.45;
+    focus_effect.softness = 0.33;
+    focus_effect.dimming = 0.12;
+
+    ZoomClip zoom;
+    zoom.id = uuid_from_last_byte(21);
+    zoom.start_time = 1.2;
+    zoom.end_time = 2.4;
+    zoom.focus_effect = focus_effect;
+    project.zoom_clips.push_back(zoom);
+
+    ScreenMotionClip screen;
+    screen.id = uuid_from_last_byte(22);
+    screen.timing.start_time = 2.5;
+    screen.timing.duration = 1.3;
+    screen.timing.lead_in_duration = 0.4;
+    screen.timing.return_duration = 0.2;
+    screen.timing.preferred_lead_in_duration = 0.6;
+    screen.timing.preferred_return_duration = 0.5;
+    screen.timing.lead_in_progress_offset = 0.23;
+    screen.timing.easing = ZoomEasingPreset::kQuintic;
+    screen.timing.custom_curve = {0.21, 0.17, 0.82, 0.94};
+    screen.timing.return_progress_offset = 0.61;
+    screen.target.position = {0.37, 0.61};
+    screen.target.scale = 1.4;
+    screen.target.rotation_x = 12;
+    screen.target.rotation_y = -7;
+    screen.target.rotation_z = 3;
+    screen.target.perspective = 0.72;
+    screen.group_id = uuid_from_last_byte(23);
+    screen.focus_effect = focus_effect;
+    project.screen_motion_clips.push_back(screen);
+
+    CameraMotionClip camera;
+    camera.id = uuid_from_last_byte(24);
+    camera.timing.start_time = 4;
+    camera.timing.duration = 1.1;
+    camera.timing.easing = ZoomEasingPreset::kSpring;
+    camera.target.layout = CameraLayoutMode::shaped(CameraShape::kCircle);
+    camera.target.position = {0.81, 0.72};
+    camera.target.size = 0.42;
+    camera.target.roundness = 0.9;
+    camera.target.opacity = 0.83;
+    camera.group_id = uuid_from_last_byte(25);
+    project.camera_motion_clips.push_back(camera);
+
+    CameraMotionClip fullscreen_camera;
+    fullscreen_camera.id = uuid_from_last_byte(26);
+    fullscreen_camera.target.layout = CameraLayoutMode::fullscreen();
+    project.camera_motion_clips.push_back(fullscreen_camera);
+
+    MosaicClip mosaic;
+    mosaic.id = uuid_from_last_byte(27);
+    mosaic.timing = {5.5, 2.2};
+    mosaic.source_rect = {0.12, 0.24, 0.43, 0.32};
+    mosaic.corner_radius = 0.14;
+    mosaic.style = MosaicEffectStyle::kSpotlight;
+    mosaic.intensity = 0.67;
+    mosaic.spotlight_dimming = 0.31;
+    mosaic.transition_style = MosaicTransitionStyle::kSmooth;
+    mosaic.transition_in_duration = 0.45;
+    mosaic.transition_out_duration = 0.52;
+    project.mosaic_clips.push_back(mosaic);
+    MosaicClip blur_mosaic;
+    blur_mosaic.id = uuid_from_last_byte(29);
+    blur_mosaic.timing = {7.8, 1.4};
+    blur_mosaic.style = MosaicEffectStyle::kBlur;
+    blur_mosaic.transition_style = MosaicTransitionStyle::kLinear;
+    blur_mosaic.transition_in_duration = 0.16;
+    blur_mosaic.transition_out_duration = 0.27;
+    project.mosaic_clips.push_back(blur_mosaic);
+
+    StickerClip sticker;
+    sticker.id = uuid_from_last_byte(28);
+    sticker.timing = {8, 3.5};
+    sticker.relative_path = "Media/stickers/cat.png";
+    sticker.position = {0.29, 0.68};
+    sticker.width = 0.47;
+    sticker.rotation_degrees = -14;
+    sticker.opacity = 0.86;
+    sticker.corner_radius = 13;
+    sticker.border_width = 2.5;
+    sticker.border_color = HexColor{"#3A7BCD"};
+    sticker.shadow_opacity = 0.42;
+    sticker.shadow_radius = 31;
+    sticker.shadow_offset_x = -4;
+    sticker.shadow_offset_y = 12;
+    sticker.animation = StickerAnimationPreset::kSlideTopLeft;
+    sticker.animation_curve = ElementMotionCurve::kGentle;
+    sticker.exit_animation = StickerAnimationPreset::kFade;
+    sticker.enter_duration = 0.83;
+    sticker.exit_duration = 0.38;
+    sticker.backdrop_blur = 17.5;
+    sticker.backdrop_blur_includes_camera = true;
+    sticker.hides_screen = true;
+    sticker.hides_camera = true;
+    sticker.layer_index = 3;
+    project.sticker_clips.push_back(sticker);
+
+    const std::string encoded = ProjectJson::encode(project);
+    EXPECT_TRUE(encoded.find("\"primarySegmentAudioOverrides\"") != std::string::npos);
+    EXPECT_TRUE(encoded.find("\"screenMotionClips\"") != std::string::npos);
+    EXPECT_TRUE(encoded.find("\"cameraMotionClips\"") != std::string::npos);
+    EXPECT_TRUE(encoded.find("\"mosaicClips\"") != std::string::npos);
+    EXPECT_TRUE(encoded.find("\"stickerClips\"") != std::string::npos);
+
+    RecorderProject decoded;
+    ProjectJsonError error;
+    EXPECT_TRUE(ProjectJson::decode(encoded, decoded, error));
+    EXPECT_TRUE(decoded == project);
+    EXPECT_EQ(ProjectJson::encode(decoded), encoded);
+
+    EXPECT_TRUE((OverlayTiming{2, 3}.contains(4.99)));
+    EXPECT_FALSE((OverlayTiming{2, 3}.contains(5)));
+    EXPECT_TRUE(PrimarySegmentAudioOverrides{}.is_empty());
+    EXPECT_TRUE(focus_effect.is_valid());
+    FocusEffect invalid_focus = focus_effect;
+    invalid_focus.size = 1.1;
+    EXPECT_FALSE(invalid_focus.is_valid());
+    EXPECT_EQ(sticker.automatic_exit(), StickerAnimationPreset::kSlideBottomRight);
+    const NormalizedOverlayRect clamped = NormalizedOverlayRect{-0.5, 1.2, 2, 0}.clamped();
+    EXPECT_NEAR(clamped.x, 0.0, 1e-12);
+    EXPECT_NEAR(clamped.y, 0.99, 1e-12);
+    EXPECT_NEAR(clamped.width, 1.0, 1e-12);
+    EXPECT_NEAR(clamped.height, 0.01, 1e-12);
+}
+
+void test_project_json_timeline_missing_field_defaults() {
+    using namespace dogsc;
+    const std::string text = R"({
+      "version": 27,
+      "timeline": {
+        "primarySegmentAudioOverrides": {
+          "00000000-0000-4000-8000-00000000002A": {"systemVolume": 0.4}
+        },
+        "screenMotionClips": [{
+          "id": "00000000-0000-4000-8000-00000000002B",
+          "timing": {"startTime": 1, "duration": 2},
+          "target": {"position": {"x": 0.5, "y": 0.5}, "scale": 1,
+                      "rotationX": 0, "rotationY": 0, "rotationZ": 0, "perspective": 0.65}
+        }],
+        "cameraMotionClips": [{
+          "id": "00000000-0000-4000-8000-00000000002C",
+          "timing": {"startTime": 2, "duration": 1},
+          "target": {"layout": {"kind": "shape", "shape": "方形"},
+                     "position": {"x": 0.86, "y": 0.82}, "size": 0.35,
+                     "roundness": 0.5, "opacity": 1}
+        }],
+        "mosaicClips": [{
+          "id": "00000000-0000-4000-8000-00000000002D",
+          "timing": {"startTime": 3, "duration": 4},
+          "sourceRect": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+          "cornerRadius": 0.08, "style": "spotlight", "intensity": 0.6
+        }],
+        "stickerClips": [{
+          "id": "00000000-0000-4000-8000-00000000002E",
+          "timing": {"startTime": 4, "duration": 2},
+          "relativePath": "Media/stickers/a.png", "position": {"x": 0.5, "y": 0.5},
+          "width": 0.38, "rotationDegrees": 0, "opacity": 1, "cornerRadius": 18,
+          "borderWidth": 0, "borderColor": "#FFFFFF", "shadowOpacity": 0.28,
+          "shadowRadius": 24, "shadowOffsetX": 0, "shadowOffsetY": 10,
+          "animation": "pop", "enterDuration": 0.7, "exitDuration": 0.22,
+          "backdropBlur": 20, "layerIndex": 0
+        }]
+      }
+    })";
+    RecorderProject project;
+    ProjectJsonError error;
+    EXPECT_TRUE(ProjectJson::decode(text, project, error));
+    EXPECT_EQ(project.primary_segment_audio_overrides.size(), 1U);
+    EXPECT_FALSE(project.primary_segment_audio_overrides.begin()->second.microphone_volume);
+    EXPECT_FALSE(project.screen_motion_clips[0].group_id.has_value());
+    EXPECT_FALSE(project.screen_motion_clips[0].focus_effect.has_value());
+    EXPECT_NEAR(project.screen_motion_clips[0].timing.lead_in_duration, 0.55, 1e-12);
+    EXPECT_FALSE(project.camera_motion_clips[0].group_id.has_value());
+    EXPECT_EQ(project.camera_motion_clips[0].target.layout.kind, CameraLayoutMode::Kind::kShape);
+    EXPECT_NEAR(project.mosaic_clips[0].spotlight_dimming, 0.22, 1e-12);
+    EXPECT_EQ(project.mosaic_clips[0].transition_style, MosaicTransitionStyle::kSmooth);
+    EXPECT_NEAR(project.mosaic_clips[0].transition_in_duration, 0.30, 1e-12);
+    EXPECT_EQ(project.sticker_clips[0].animation_curve, ElementMotionCurve::kSwift);
+    EXPECT_FALSE(project.sticker_clips[0].exit_animation.has_value());
+    EXPECT_FALSE(project.sticker_clips[0].backdrop_blur_includes_camera);
+    EXPECT_FALSE(project.sticker_clips[0].hides_screen);
+    EXPECT_FALSE(project.sticker_clips[0].hides_camera);
+}
+ 
 void test_project_json_missing_fields_use_defaults() {
     using namespace dogsc;
     const std::string minimal = R"({"version": 27, "title": "最小工程"})";
@@ -253,6 +559,11 @@ void test_project_json_missing_fields_use_defaults() {
     EXPECT_NEAR(project.canvas.padding, 100.0, 1e-12);
     EXPECT_NEAR(project.audio.system_volume, 0.82, 1e-12);
     EXPECT_TRUE(project.source_sequence.is_full_recording);
+    EXPECT_TRUE(project.primary_segment_audio_overrides.empty());
+    EXPECT_TRUE(project.screen_motion_clips.empty());
+    EXPECT_TRUE(project.camera_motion_clips.empty());
+    EXPECT_TRUE(project.mosaic_clips.empty());
+    EXPECT_TRUE(project.sticker_clips.empty());
 }
 
 void test_project_json_unknown_fields_ignored() {
@@ -366,14 +677,68 @@ void test_cursor_layout_anchors_hotspot() {
     EXPECT_TRUE(CursorRenderGeometry::layout(100, 200, 1080, 1.0, metrics, layout));
     EXPECT_NEAR(layout.origin_x, 100.0, 1e-12);
     EXPECT_NEAR(layout.origin_y, 200.0, 1e-12);
-    EXPECT_NEAR(layout.width, 1080.0, 1e-12);
-
+    EXPECT_NEAR(layout.width, 44.0, 1e-12);
+    EXPECT_NEAR(layout.click_effect_width, 63.8, 1e-12);
+    EXPECT_NEAR(layout.click_line_width, 3.52, 1e-12);
     metrics.hotspot_x = 0.5;
     metrics.hotspot_y = 0.5;
     EXPECT_TRUE(CursorRenderGeometry::layout(100, 200, 1080, 1.0, metrics, layout));
-    EXPECT_NEAR(layout.origin_x, 100.0 - 540.0, 1e-12);
+    EXPECT_NEAR(layout.origin_x, 100.0 - 22.0, 1e-12);
 }
 
+void test_cursor_assets_share_canonical_height_across_intrinsic_sizes() {
+    using namespace dogsc;
+    CursorAssetMetrics metrics;
+    metrics.width = 22;
+    metrics.height = 44;
+    metrics.hotspot_x = 0.5;
+    metrics.hotspot_y = 0.25;
+    metrics.scale_reference_height = 44;
+    CursorRenderLayout layout;
+    EXPECT_TRUE(CursorRenderGeometry::layout(100, 200, 2160, 1.0, metrics, layout));
+    EXPECT_NEAR(layout.height, 88, 1e-12);
+    EXPECT_NEAR(layout.width, 44, 1e-12);
+    EXPECT_NEAR(layout.origin_x, 78, 1e-12);
+    EXPECT_NEAR(layout.origin_y, 178, 1e-12);
+    EXPECT_NEAR(layout.click_effect_height, 88, 1e-12);
+    EXPECT_NEAR(layout.click_effect_width, 127.6, 1e-12);
+}
+
+
+void test_cursor_click_geometry_preserves_all_effect_shapes() {
+    using namespace dogsc;
+    const auto ripple = CursorRenderGeometry::click_geometry(
+        CursorClickEffectStyle::kRipple, 0, 44);
+    EXPECT_TRUE(ripple.has_value());
+    EXPECT_NEAR(ripple->primary_diameter, 44 * 0.45, 1e-12);
+    EXPECT_NEAR(ripple->secondary_diameter, 44 * 0.28, 1e-12);
+    EXPECT_TRUE(ripple->secondary_is_filled);
+    EXPECT_NEAR(ripple->max_footprint_diameter, 44 * 2.2, 1e-12);
+
+    const auto pulse = CursorRenderGeometry::click_geometry(
+        CursorClickEffectStyle::kPulse, 0.55, 44);
+    EXPECT_TRUE(pulse.has_value());
+    EXPECT_NEAR(pulse->secondary_diameter, 44 * 0.25, 1e-9);
+
+    const auto burst = CursorRenderGeometry::click_geometry(
+        CursorClickEffectStyle::kBurst, 1, 44, 1, 1);
+    EXPECT_TRUE(burst.has_value());
+    EXPECT_NEAR(burst->primary_opacity, 0, 1e-12);
+    EXPECT_NEAR(burst->accent_opacity, 0, 1e-12);
+    EXPECT_NEAR(burst->max_footprint_diameter, 44 * 1.8, 1e-12);
+
+    const auto glow_scaled = CursorRenderGeometry::click_geometry(
+        CursorClickEffectStyle::kGlow, 0.5, 44, 2, 4);
+    EXPECT_TRUE(glow_scaled.has_value());
+    EXPECT_TRUE(glow_scaled->primary_is_filled);
+    const double glow_fade = (0.5 - 0.18) / 0.82;
+    EXPECT_NEAR(glow_scaled->primary_opacity,
+                0.78 * (1 - std::pow(glow_fade, 1.4)), 1e-12);
+    EXPECT_FALSE(CursorRenderGeometry::click_geometry(
+        CursorClickEffectStyle::kNone, 0.5, 44).has_value());
+    EXPECT_FALSE(CursorRenderGeometry::click_geometry(
+        CursorClickEffectStyle::kRipple, std::nan(""), 44).has_value());
+}
 void test_cursor_layout_rejects_bad_metrics() {
     using namespace dogsc;
     CursorAssetMetrics metrics;
@@ -466,6 +831,11 @@ int main() {
     test_audio_anchored_auxiliary_plan();
     test_sync_anchor_curve_extrapolates_from_zero();
     test_project_json_round_trip();
+    test_project_json_capture_configuration_round_trip();
+    test_capture_configuration_defaults_and_missing_json_fields();
+    test_capture_dimensions_preserve_even_sizes_and_orientation();
+    test_project_json_timeline_tracks_round_trip();
+    test_project_json_timeline_missing_field_defaults();
     test_project_json_missing_fields_use_defaults();
     test_project_json_unknown_fields_ignored();
     test_project_json_rejects_legacy_and_future_schema();
@@ -477,6 +847,8 @@ int main() {
     test_opening_sample_is_identity_when_disabled();
     test_opening_roster_is_stable();
     test_cursor_layout_anchors_hotspot();
+    test_cursor_click_geometry_preserves_all_effect_shapes();
+    test_cursor_assets_share_canonical_height_across_intrinsic_sizes();
     test_cursor_layout_rejects_bad_metrics();
     test_canvas_pixel_dimensions_source_resolution();
     test_canvas_pixel_dimensions_presets_are_even();

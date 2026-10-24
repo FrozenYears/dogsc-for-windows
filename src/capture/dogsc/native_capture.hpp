@@ -49,7 +49,7 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-enum class VideoCodec { hevc, h264 };
+enum class VideoCodec { hevc, h264, prores422 };
 
 struct EncoderInfo {
     std::string name;

@@ -32,7 +32,7 @@ void usage() {
         "  --monitor <index> | --window <HWND decimal or 0xhex>\n"
         "  --region <x,y,width,height> (pixels relative to capture item)\n"
         "  --fps <30|60|90|120> --duration <active seconds>\n"
-        "  --codec <auto|hevc|h264> --system-audio --microphone --camera\n"
+        "  --codec <auto|hevc|h264|prores|prores422> --system-audio --microphone --camera\n"
         "  --pause-at <active seconds> --pause-for <wall seconds>\n"
         "Keys: P pause/resume, Q or Ctrl+C finalize and stop.\n"
         "Audio is opt-in. Raw screen excludes cursor; pointer.jsonl stores it separately.\n";
@@ -111,8 +111,9 @@ int wmain(int argc, wchar_t** argv) {
             }
             else if (argument == L"--codec") {
                 options.codec = winrt::to_string(value());
-                if (options.codec != "auto" && options.codec != "hevc" && options.codec != "h264") {
-                    throw std::invalid_argument("编码格式仅支持 auto/hevc/h264");
+                if (options.codec != "auto" && options.codec != "hevc" && options.codec != "h264"
+                    && options.codec != "prores" && options.codec != "prores422") {
+                    throw std::invalid_argument("编码格式仅支持 auto/hevc/h264/prores/prores422");
                 }
             }
             else if (argument == L"--pause-at") {

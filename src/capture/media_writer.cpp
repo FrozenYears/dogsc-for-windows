@@ -10,6 +10,7 @@
 #include <mftransform.h>
 #include <winrt/base.h>
 
+#include "dogsc/ffmpeg_prores.hpp"
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -332,14 +333,21 @@ std::vector<EncoderInfo> enumerate_video_encoders() {
                     __uuidof(IMFTransform), transform.put_void());
                 info.activation_succeeded = SUCCEEDED(activated);
                 info.activation_hresult = static_cast<std::int32_t>(activated);
-                // 激活成功仅说明可以实例化，不能当作该分辨率已经通过编码验证。
-                if (SUCCEEDED(activated)) {
-                    list.values[index]->ShutdownObject();
-                }
+                if (SUCCEEDED(activated)) list.values[index]->ShutdownObject();
                 result.push_back(std::move(info));
             }
         }
     }
+    EncoderInfo prores;
+    prores.codec = VideoCodec::prores422;
+    try {
+        prores.name = "FFmpeg " + ffmpeg_prores_encoder_name() + " (ProRes 422 Standard)";
+        prores.activation_succeeded = true;
+    } catch (const std::exception& error) {
+        prores.name = error.what();
+        prores.activation_hresult = static_cast<std::int32_t>(E_FAIL);
+    }
+    result.push_back(std::move(prores));
     return result;
 }
 
@@ -365,6 +373,7 @@ struct MediaWriter::Impl {
     com_ptr<IMFByteStream> byte_stream;
     com_ptr<IMFMediaSink> sink;
     com_ptr<IMFSinkWriter> writer;
+    std::unique_ptr<FFmpegProResWriter> prores;
     std::vector<AudioTrack> audio;
     DWORD video_stream = static_cast<DWORD>(MF_SINK_WRITER_INVALID_STREAM_INDEX);
     std::string encoder;
@@ -377,6 +386,13 @@ struct MediaWriter::Impl {
     UINT frame_index = 0;
 
     ~Impl() {
+        if (prores) {
+            if (!finalization_attempted) {
+                try { prores->finalize(); }
+                catch (...) { OutputDebugStringW(L"dogsc: FFmpeg ProRes writer destructor finalization failed.\n"); }
+            }
+            return;
+        }
         if (started && !finalization_attempted) {
             finish();
             if (FAILED(finalization_result)) {
@@ -385,9 +401,7 @@ struct MediaWriter::Impl {
         } else {
             close_output();
         }
-        if (allocator) {
-            allocator->UninitializeSampleAllocator();
-        }
+        if (allocator) allocator->UninitializeSampleAllocator();
     }
 
     void close_output() noexcept {
@@ -425,10 +439,20 @@ struct MediaWriter::Impl {
             throw winrt::hresult_error(E_INVALIDARG, L"输出路径和至少一个媒体流是必需的。");
         }
         if (has_video && (!input_device || !options.width || !options.height || !options.frame_rate
-            || options.width % 2 != 0 || options.height % 2 != 0
+            || (options.codec != VideoCodec::prores422 &&
+                (options.width % 2 != 0 || options.height % 2 != 0))
             || options.width > static_cast<UINT32>(std::numeric_limits<LONG>::max())
             || options.height > static_cast<UINT32>(std::numeric_limits<LONG>::max()))) {
-            throw winrt::hresult_error(E_INVALIDARG, L"视频需要 D3D11 设备、非零帧率及偶数原生尺寸。");
+            throw winrt::hresult_error(E_INVALIDARG,
+                options.codec == VideoCodec::prores422
+                    ? L"视频需要 D3D11 设备、非零帧率和有效原生尺寸。"
+                    : L"视频需要 D3D11 设备、非零帧率及偶数原生尺寸。");
+        }
+        if (has_video && options.codec == VideoCodec::prores422) {
+            prores = std::make_unique<FFmpegProResWriter>(input_device, options);
+            encoder = prores->encoder_name() + " (ProRes 422 Standard)";
+            started = true;
+            return;
         }
         if (has_video && options.codec == VideoCodec::h264
             && (options.width > 4096 || options.height > 2304)) {
@@ -693,6 +717,10 @@ struct MediaWriter::Impl {
 
     void write_video(ID3D11Texture2D* bgra, std::int64_t time, std::int64_t duration) {
         require_open();
+        if (prores) {
+            prores->write_video(bgra, time, duration);
+            return;
+        }
         if (video_stream == MF_SINK_WRITER_INVALID_STREAM_INDEX || !bgra || time < 0 || duration <= 0) {
             throw winrt::hresult_error(E_INVALIDARG, L"无效的视频帧或时间戳。");
         }
@@ -803,6 +831,10 @@ struct MediaWriter::Impl {
 
     void write_audio(std::size_t track_index, const std::uint8_t* data, UINT32 frames, std::int64_t time) {
         require_open();
+        if (prores) {
+            prores->write_audio(track_index, data, frames, time);
+            return;
+        }
         if (track_index >= audio.size() || time < 0 || (frames && !data)) {
             throw winrt::hresult_error(E_INVALIDARG, L"无效的音轨、音频数据或时间戳。");
         }
@@ -838,6 +870,12 @@ struct MediaWriter::Impl {
     }
 
     void finalize() {
+        if (prores) {
+            require_open();
+            finalization_attempted = true;
+            prores->finalize();
+            return;
+        }
         if (!finalization_attempted) {
             require_open();
             finish();

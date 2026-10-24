@@ -2,12 +2,12 @@
 
 > 基于 `00`–`03` 基线文档与源码核查。基线 commit `567fd6e`。
 
-## 1. 总原则
-
-1. **模型先行、渲染后置**：`RecorderCore` 15,369 行零平台依赖，先把它完整搬到 Windows 并做到 JSON 双向互通，再动采集与渲染。
-2. **两端同源**：不 fork 产品设计，只 fork 实现。工程文件（`.dogscproject`）与时间线语义保持字节级兼容。
-3. **能力裁剪显式化**：无系统等价物的功能（系统光标库、系统壁纸库、iOS 设备录制、进程级系统声音）在 UI 上明确降级，不做静默伪实现。
-4. **单一合成器**：预览与导出必须共用同一个合成实现，这是 macOS 端成立的前提（`SharedFrameCompositor.swift:8-22`），Windows 端不得拆分。
+1. **模型先行、渲染后置**：`RecorderCore` 15,369 行零平台依赖，先把核心模型、时间线和 JSON 稳定性搬到 Windows，再接采集与渲染。
+2. **分层合成器**：预览与导出必须共用同一个 `IFrameCompositor`；当前 `src/render/d2d` 已提供 D2D/WARP 离屏后端，保持六层顺序与资源借用边界。
+3. **能力裁剪显式化**：无系统等价物的功能（系统光标库、系统壁纸库、iOS 设备录制、默认进程级系统声音）在 UI 上明确降级，不做静默伪实现。
+4. **独立工程语义**：Windows 使用独立 `project.json`，保留 schema 与核心字段语义，但不承诺 macOS 工程文件互通。
+5. **验证优先**：场景、时间线、捕获时序和渲染后端均有独立测试；长文件和二进制产物写入后必须核验。
+6. **产品完整性**：WinUI 3 编辑器、DXGI 预览、SourceReader 导出与发布合规仍属于后续阶段，不以 CLI/离屏 smoke 代替。
 
 ## 2. 技术栈决策
 
@@ -17,39 +17,22 @@
 | UI | WinUI 3 (C++/WinRT) | WPF、Qt、Avalonia、Dear ImGui | 原生 Windows 观感与 DPI 支持；缺点见 §7 风险 R4 |
 | 合成 | Direct2D `ID2D1DeviceContext` + 自定义 HLSL | D3D11 全自绘、Skia | D2D 内置 GaussianBlur/Composite/ColorMatrix/Tile/3DTransform，可覆盖 CI 用到的 14 种滤镜（见 `02` §3.2） |
 | 采集 | Windows.Graphics.Capture (WGC) | DXGI Desktop Duplication | WGC 支持显示器/窗口/区域且能设置 `IsCursorCaptureEnabled(false)`，与 mac 端「画面不含光标」策略一致（`ScreenRecorder.swift:246`） |
-| 音频 | WASAPI（loopback + capture） | Media Foundation Source Reader | loopback 是唯一系统声音来源；进程级分离不可得 |
-| 编解码 | Media Foundation SinkWriter / SourceReader | FFmpeg、NVENC 直调 | 系统自带 H.264/HEVC/AAC；避免 GPL/分发体积问题 |
+| 音频 | WASAPI（整设备 loopback + 麦克风） | Media Foundation Source Reader | 当前 CLI 实接整设备 loopback/麦克风；进程级捕获尚未接入产品界面 |
+| 编解码 | MF SinkWriter + 动态 FFmpeg/libavcodec（ProRes 422） | 厂商 MFT / FFmpeg | HEVC/H.264 优先 MF 硬件编码；ProRes 经 FFmpeg `prores_ks` 编码和 MOV 封装，分段合并优先原生 MF remux |
 | 自动更新 | 首版关闭；后续 WinSparkle 或自建 | — | 与 Sparkle 能力不对等，不阻塞主线 |
 
-## 3. 仓库结构
+```text
+dogsc-windows/
+|- src/core/              核心模型、JSON、时间线/场景/几何/指针求值
+|- src/capture/           WGC、WASAPI、指针/摄像头采集、MF 分片/remux、ProRes
+|- src/render/d2d/        D2D/WARP 离屏 `IFrameCompositor`
+|- tools/capture_cli/     原生采集与编码/恢复验证 CLI
+|- tools/scene_dump/      场景逐帧 JSON 调试工具
+|- tests/                 core、时间线、几何、捕获时钟和 D2D WARP smoke
+|- docs/                  契约、决议、阶段记录与工作日志
+```
 
-```
-dogsc-win/
-|- CMakeLists.txt
-|- core/                  ← RecorderCore 移植（无平台依赖）
-|   model/                 ProjectModel / ProjectMediaModel / ProjectTimeline / CaptureConfiguration
-|   editing/               ProjectTimelineEditing / Transforms / EditorTimeline
-|   timeline/              TimelineMap / TimelineMediaPlan / OutputFrameSchedule
-|   scene/                 FrameScene / CompositionScene / ScreenProjection / CameraContentFill
-|   motion/                ZoomAnimation / ScreenMotion / CameraMotion / StickerTransition / PointerTrack / AutoZoomPlanner
-|- render/
-|   compositor.h           IFrameCompositor::composite(plan, resources, extent) -> Texture
-|   d2d/                   图层、遮罩、连续圆角、透视 HLSL、文字光栅化
-|- capture/
-|   wgc/                   显示器 / 窗口 / 区域采集
-|   audio/                 WASAPI loopback + mic
-|   writer/                MF SinkWriter 封装（分片、PTS 归一化）
-|   pointer/               WH_MOUSE_LL + 光标采样
-|- export/
-|   reader/                MF SourceReader（含 seek）
-|   pipeline/              时间线切片 -> 合成 -> 编码
-|- ui/
-|   shell/                  录制条、编辑器、设置、引导
-|   editor/                 画布、时间线、检查器
-|- platform/
-|   win32/                   窗口层级、DPI、托盘、全局钩子、字体、偏好
-|   json/                    nlohmann/json 或 RapidJSON 封装（保持 Codable 语义）
-```
+目前没有 `export/`、`ui/` 或 `render/present/` 产品实现；这些仍是后续里程碑，不作为本阶段完成项。
 
 ## 4. 模块映射表
 

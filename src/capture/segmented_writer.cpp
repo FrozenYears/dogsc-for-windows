@@ -75,7 +75,11 @@ struct SegmentedWriter::Impl {
                 {"outputStart100ns", segment.media.output_start},
                 {"duration100ns", segment.media.duration}, {"finalized", segment.finalized}});
         }
-        save_journal(directory, json{{"version", 1}, {"segmentDuration100ns", segment_ticks},
+        json codec = options.codec == VideoCodec::prores422 ? "prores422"
+            : options.codec == VideoCodec::hevc ? "hevc" : "h264";
+        save_journal(directory, json{{"version", 1}, {"codec", codec},
+            {"container", options.codec == VideoCodec::prores422 ? "mov" : "mp4"},
+            {"segmentDuration100ns", segment_ticks},
             {"output", winrt::to_string(output.filename().wstring())}, {"segments", std::move(entries)}});
     }
     Segment& segment(std::size_t index) {
@@ -83,7 +87,8 @@ struct SegmentedWriter::Impl {
         if (index > segments.size()) throw std::invalid_argument("分段时间戳存在空洞");
         if (index == segments.size()) {
             std::wostringstream name;
-            name << L"part-" << std::setfill(L'0') << std::setw(6) << index << L".mp4";
+            name << L"part-" << std::setfill(L'0') << std::setw(6) << index
+                << (options.codec == VideoCodec::prores422 ? L".mov" : L".mp4");
             auto settings = options;
             settings.path = (directory / name.str()).wstring();
             auto writer = std::make_unique<MediaWriter>(device.get(), settings);
