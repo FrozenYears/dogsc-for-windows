@@ -378,6 +378,14 @@ RecorderProject apply_style(const RecorderProject& project, std::wstring_view st
         const auto value = std::wstring_view(arguments[0]);
         if (value != L"true" && value != L"false") throw std::invalid_argument("camera-hidden 需要 true/false");
         output.camera.is_hidden = value == L"true";
+    } else if (style == L"camera-shape") {
+        const auto value = winrt::to_string(arguments[0]);
+        if (value == "方形") output.camera.shape = CameraShape::kSquare;
+        else if (value == "横向") output.camera.shape = CameraShape::kHorizontal;
+        else if (value == "纵向") output.camera.shape = CameraShape::kVertical;
+        else if (value == "圆形") output.camera.shape = CameraShape::kCircle;
+        else if (value == "原始比例") output.camera.shape = CameraShape::kOriginal;
+        else throw std::invalid_argument("camera-shape 无效");
     } else if (style == L"camera-size") {
         output.camera.size = std::clamp(parse_double(arguments[0], "camera-size"), 0.05, 1.0);
         output.camera.is_hidden = false;

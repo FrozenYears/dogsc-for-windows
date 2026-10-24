@@ -118,6 +118,7 @@ app.innerHTML = `
           <div class="project-export-row"><label class="field"><span>导出 MP4</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary" type="button" disabled>导出</button></div>
           <div class="style-row"><label class="field"><span>背景</span><select id="style-background"><option>黑曜石网格</option><option>工程白网格</option><option>暗夜星阵</option><option>建筑极简点</option><option>立体等角网</option></select></label><label class="field"><span>留白</span><input id="style-padding" type="number" min="0" max="1000" step="1" value="100" /></label><label class="field"><span>摄像头尺寸</span><input id="style-camera-size" type="number" min="0.05" max="1" step="0.01" value="0.29" /></label><label class="field"><span>光标尺寸</span><input id="style-cursor-size" type="number" min="0.25" max="6" step="0.05" value="1.25" /></label><button id="style-apply" class="secondary" type="button" disabled>应用画面参数</button></div>
           <div class="effect-row"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>点击透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>点击缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label></div>
+          <div class="camera-row"><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div>
           <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
           <div class="editor-controls">
             <label class="field"><span>时间点（秒）</span><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /></label>
@@ -188,6 +189,8 @@ const styleCursorSize = $("style-cursor-size") as HTMLInputElement;
 const styleCursorEffect = $("style-cursor-effect") as HTMLSelectElement;
 const styleCursorOpacity = $("style-cursor-opacity") as HTMLInputElement;
 const styleCursorScale = $("style-cursor-scale") as HTMLInputElement;
+const styleCameraShape = $("style-camera-shape") as HTMLSelectElement;
+const styleCameraHidden = $("style-camera-hidden") as HTMLInputElement;
 const styleApply = $("style-apply") as HTMLButtonElement;
 let autoSaveTimer: number | undefined;
 let projectCommandBusy = false;
@@ -697,7 +700,7 @@ async function applyProjectStyles() {
   if (!projectFile || !(await flushProjectSave())) return;
   projectCommandBusy = true;
   try {
-    for (const [style, value] of [["background", styleBackground.value], ["padding", stylePadding.value], ["camera-size", styleCameraSize.value], ["cursor-size", styleCursorSize.value], ["cursor-effect", styleCursorEffect.value], ["cursor-opacity", styleCursorOpacity.value], ["cursor-scale", styleCursorScale.value]]) {
+    for (const [style, value] of [["background", styleBackground.value], ["padding", stylePadding.value], ["camera-size", styleCameraSize.value], ["cursor-size", styleCursorSize.value], ["cursor-effect", styleCursorEffect.value], ["cursor-opacity", styleCursorOpacity.value], ["cursor-scale", styleCursorScale.value], ["camera-shape", styleCameraShape.value], ["camera-hidden", String(styleCameraHidden.checked)]]) {
       projectSnapshot = await runProjectCommand(["edit-draft", projectFile, "style", style, value]);
     }
     renderProjectSnapshot();
