@@ -27,6 +27,10 @@
 - 720p ProRes 分片恢复经 `ffprobe` 确认为 `prores` Standard、`apcn`、`yuv422p10le`、30 帧，以及 AAC LC 48 kHz/2 声道；完整文件经 FFmpeg 解码无报错。当前只证明本机配置的短录制与恢复，不证明跨硬件性能。
 - 合规边界仍未关闭：仓库使用 vcpkg manifest 的动态 FFmpeg 库配置，但没有提交对应 FFmpeg 源码、补丁包、构建复现材料或发布 notice；发布前必须按 FFmpeg 官方 LGPL 清单完成材料与法律审查。
 
+## D16 Tauri 产品壳（2026-10-24）
+
+采用 **Tauri v2 + C++ sidecar**，不直接采用 Electron 主进程或 WPF Windows 实现。Tauri 负责桌面窗口、前端界面和进程权限；当前 `dogsc_capture.exe` 作为 `externalBin` sidecar 接入。理由是保留已验证的 C++ WGC/WASAPI/MF 管线，同时比从零实现 WinUI 3 编辑器更快获得可双击运行的 GUI。两个参考仓库用于借鉴交互、时间线和测试流程，不直接复制其 Electron/WPF 主进程或 GPL FFmpeg 发布包。
+
 ## D7–D9 的后续核查要求
 
 以上三项在 2026-10-23 做出决议时，基于当时对 Windows API 的认知。其中两项已被后续检索推翻，必须按新事实重审：

@@ -6,11 +6,11 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 ## 状态
 
-**移植进行中：M0 核心基线完成；M1 原生采集主路径与 M2a 离屏渲染内核已实现，集成验收继续进行。**
+**移植进行中：M0 核心基线完成；M1 原生采集、M2a 离屏渲染与 Tauri 桌面壳首个切片已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 完整六层离屏合成与几何、透视、效果输入。
-- 已验证：Windows Release clean build，6/6 CTest；WARP 多层场景读回像素断言；ProRes 720p30/1080p30/1440p30 与 HEVC 1440p30 实录。ProRes 高分辨率实时性存在明显瓶颈，见本轮工作日志。
-- 尚未完成：WinUI 3 编辑器、DXGI 实时预览、SourceReader 时间线导出工作流、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 中文录制工作区和 C++ capture sidecar 接线。
+- 已验证：Windows Release clean build，6/6 CTest；Tauri 前端 `pnpm build`；NSIS 安装包构建；Tauri Windows GUI 启动并取得有效窗口句柄。
+- 尚未完成：项目库、编辑器、DXGI 实时预览、SourceReader 时间线导出工作流、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
 
 ## 决策基线
 
@@ -55,8 +55,29 @@ capture/         WGC + WASAPI + MF 写入
 export/          MF 解码 → 合成 → 编码
 orchestration/   状态机 / 持久化 / 播放时钟
 ui/              WinUI 3 编辑器 + Win32 HUD
-platform/        Win32 封装、字体、偏好、JSON
+apps/tauri/       Tauri v2 桌面壳、中文录制工作区与 C++ sidecar
 ```
+
+## Tauri 桌面壳（当前可运行切片）
+
+先构建 C++ Release 目标，再启动 Tauri：
+
+```powershell
+cmake --build out/vcpkg-native --config Release --parallel
+cd apps/tauri
+pnpm install
+pnpm tauri:dev
+```
+
+生成可双击安装包：
+
+```powershell
+pnpm tauri:build
+```
+
+安装包位于 `apps/tauri/src-tauri/target/release/bundle/nsis/`。当前界面可以配置显示器、帧率、编码器、系统声音、麦克风、摄像头和输出目录，并通过 sidecar 启动/暂停/继续/停止 C++ 原生采集。它还不是完整编辑器；项目库、时间线编辑、实时预览和最终导出仍未接入。
+
+详细说明见 [`apps/tauri/README.md`](apps/tauri/README.md)。
 
 ## Windows 采集依赖与分发
 

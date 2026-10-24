@@ -8,6 +8,7 @@
 #include <limits>
 #include <nlohmann/json.hpp>
 #include <dwmapi.h>
+#include <windows.h>
 #include "dogsc/camera_capture.hpp"
 #include "dogsc/pointer_capture.hpp"
 #include "dogsc/project_json.hpp"
@@ -29,6 +30,27 @@ struct ConsoleControl {
     ConsoleControl() { stop_requested.store(false); winrt::check_bool(SetConsoleCtrlHandler(console_control, TRUE)); }
     ~ConsoleControl() { SetConsoleCtrlHandler(console_control, FALSE); }
 };
+void poll_control_keys(bool& toggle_pause) {
+    const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    if (input == nullptr || input == INVALID_HANDLE_VALUE) return;
+    if (GetFileType(input) == FILE_TYPE_PIPE) {
+        DWORD available = 0;
+        if (!PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr) || available == 0) return;
+        char buffer[32]{};
+        DWORD read = 0;
+        if (!ReadFile(input, buffer, std::min<DWORD>(available, sizeof(buffer)), &read, nullptr)) return;
+        for (DWORD index = 0; index < read; ++index) {
+            if (buffer[index] == 'p' || buffer[index] == 'P') toggle_pause = true;
+            if (buffer[index] == 'q' || buffer[index] == 'Q') stop_requested.store(true);
+        }
+        return;
+    }
+    while (_kbhit()) {
+        const int key = _getch();
+        if (key == 'p' || key == 'P') toggle_pause = true;
+        if (key == 'q' || key == 'Q') stop_requested.store(true);
+    }
+}
 void write_text(const std::filesystem::path& path, const std::string& text) {
     std::ofstream stream(path, std::ios::binary);
     stream << text << '\n';
@@ -263,11 +285,7 @@ int record(const RecordOptions& options) {
             }
             auto now = capture::host_time_100ns();
             bool toggle_pause = false;
-            while (_kbhit()) {
-                const int key = _getch();
-                if (key == 'p' || key == 'P') toggle_pause = true;
-                if (key == 'q' || key == 'Q') stop_requested.store(true);
-            }
+            poll_control_keys(toggle_pause);
             if (screen.closed()) stop_requested.store(true);
             if (clock.started()) {
                 // 到达输出时长先冻结准确边界；不能先按迟到的循环时刻暂停，

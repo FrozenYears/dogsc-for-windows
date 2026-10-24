@@ -5,6 +5,8 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "shell:allow-kill",
+    "shell:allow-stdin-write",
     {
       "identifier": "shell:allow-spawn",
       "allow": [

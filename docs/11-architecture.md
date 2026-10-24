@@ -14,7 +14,7 @@
 | 层 | 选型 | 备选 | 决策依据 |
 |---|---|---|---|
 | 语言 | C++20 | Rust、C# | 需要直接调用 Win32 / D3D11 / D2D / Media Foundation；Swift 的 `struct` 值语义与 `inout` 在 C++ 中可用引用/值类型直接对应；无 GC 停顿，适合 60fps 实时预览 |
-| UI | WinUI 3 (C++/WinRT) | WPF、Qt、Avalonia、Dear ImGui | 原生 Windows 观感与 DPI 支持；缺点见 §7 风险 R4 |
+| UI | Tauri 2 + HTML/CSS/TypeScript | WinUI 3（后续备选） | 复用 Web 前端交互并由 Rust 管理 C++ sidecar；当前先覆盖录制工作区，编辑器继续扩展 |
 | 合成 | Direct2D `ID2D1DeviceContext` + 自定义 HLSL | D3D11 全自绘、Skia | D2D 内置 GaussianBlur/Composite/ColorMatrix/Tile/3DTransform，可覆盖 CI 用到的 14 种滤镜（见 `02` §3.2） |
 | 采集 | Windows.Graphics.Capture (WGC) | DXGI Desktop Duplication | WGC 支持显示器/窗口/区域且能设置 `IsCursorCaptureEnabled(false)`，与 mac 端「画面不含光标」策略一致（`ScreenRecorder.swift:246`） |
 | 音频 | WASAPI（整设备 loopback + 麦克风） | Media Foundation Source Reader | 当前 CLI 实接整设备 loopback/麦克风；进程级捕获尚未接入产品界面 |
@@ -26,13 +26,14 @@ dogsc-windows/
 |- src/core/              核心模型、JSON、时间线/场景/几何/指针求值
 |- src/capture/           WGC、WASAPI、指针/摄像头采集、MF 分片/remux、ProRes
 |- src/render/d2d/        D2D/WARP 离屏 `IFrameCompositor`
+|- apps/tauri/            Tauri v2 桌面壳、中文录制界面、C++ capture sidecar
 |- tools/capture_cli/     原生采集与编码/恢复验证 CLI
 |- tools/scene_dump/      场景逐帧 JSON 调试工具
 |- tests/                 core、时间线、几何、捕获时钟和 D2D WARP smoke
 |- docs/                  契约、决议、阶段记录与工作日志
 ```
 
-目前没有 `export/`、`ui/` 或 `render/present/` 产品实现；这些仍是后续里程碑，不作为本阶段完成项。
+当前已存在 Tauri 录制壳，但没有完整 `ui/editor/`、`export/` 或 `render/present/` 产品实现；这些仍是后续里程碑，不作为本阶段完成项。
 
 ## 4. 模块映射表
 

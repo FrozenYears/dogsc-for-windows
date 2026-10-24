@@ -1,9 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-fn main() {
-    dogsc_tauri_lib::run();
-}
-
 #[tauri::command]
 fn app_version() -> &'static str {
     "0.1.0"

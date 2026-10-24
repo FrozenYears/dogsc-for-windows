@@ -9,8 +9,8 @@
 | 项 | 决定 |
 |---|---|
 | 语言 | C++20（MSVC `/std:c++20`，禁用 `/fp:fast`） |
-| 编辑器 UI | WinUI 3（C++/WinRT） |
-| HUD 类窗口 | Win32 顶层窗口 + Direct2D 自绘（录制条、完成窗、权限窗、摄像头预览、备忘录、区域/窗口/屏幕选择器） |
+| 桌面壳与编辑器 UI | Tauri 2 + HTML/CSS/TypeScript（当前仅录制工作区；完整编辑器未完成） |
+| HUD 类窗口 | 当前由 Tauri 窗口承载录制工作区；后续按需采用 Win32 顶层窗口 + Direct2D 自绘（完成窗、权限窗、摄像头预览、区域/窗口/屏幕选择器） |
 | 合成 | Direct2D `ID2D1DeviceContext` + 少量 HLSL；预览与导出共用同一 `IFrameCompositor` |
 | 采集 | Windows.Graphics.Capture（显示器/窗口/区域）+ WASAPI（loopback/麦克风）+ Media Foundation SinkWriter |
 | 导出 | Media Foundation SourceReader → 自研时间线调度 → 合成 → SinkWriter |
@@ -88,11 +88,11 @@ M0  核心层 + 对拍工具 + 契约定义（无 UI / 无 GPU）
 - **M0**：核心模型、时间线、JSON、`scene_dump` 已落地。Release clean build 与 6/6 测试通过。
 - **M1**：WGC/WASAPI/MF 采集 CLI 已有本机硬件 smoke；HEVC/H.264 可用厂商硬件 MFT，ProRes 使用动态 FFmpeg。短时采集与恢复验证不等于长时 4K60、干净系统 HEVC 可用性、异机同步或发布合规通过。
 - **M2a**：D2D/WARP 离屏 `IFrameCompositor` 已实现完整六层合成，并有实际读回像素与失败路径 smoke。尚无固定基准 PNG/PSNR 对拍，因此 §5 的画质阈值未宣告通过。
-- **后续未完成**：DXGI 实时预览、WinUI 3 编辑器、SourceReader 时间线解码/导出、完整资源与工程生命周期、长时采集/跨设备矩阵和 FFmpeg 分发材料。
+- **桌面壳**：Tauri v2 中文录制工作区已构建 NSIS 安装包，并通过 C++ `dogsc_capture.exe` sidecar 接线；按钮运行时回归、目录选择器、项目库和编辑器仍未完成。
+- **后续未完成**：DXGI 实时预览、Tauri 编辑器、SourceReader 时间线解码/导出、完整资源与工程生命周期、长时采集/跨设备矩阵和 FFmpeg 分发材料。
 - **ProRes 性能风险已实测**：本机 1 秒录制，720p30 收到 35 帧；1080p30 收到 5 帧；1440p30 收到 3 帧；后两者各重复补帧 25/27 次。当前 CPU 编码路径仅 720p 样本达标，ProRes 不可作为已通过的实时高清录制路径。
 
 以上状态只代表仓库实现与本机测试，不代表完整产品可发布。
-```
 
 ## 5. 阶段验收（开工即可执行）
 
@@ -116,7 +116,7 @@ M0  核心层 + 对拍工具 + 契约定义（无 UI / 无 GPU）
 | R1 | D2D 无 CI 惰性 extent，5K 中间纹理爆显存 | 高 | 每个图层显式计算中间纹理尺寸。**D2D `GaussianBlur` 自身就会扩大 extent**：每边外扩 `StandardDeviation × 3 × (DPI/96)`，总尺寸增加 `StandardDeviation × 6 × (DPI/96)`（D11-1）。按此公式分配，配合 `BORDER_MODE` + `SetRenderingControls` 控制精度；显存峰值监控；必要时分块渲染 |
 | R2 | MF 无 `AVMutableComposition` | 高 | 以 `TimelineMediaPlan` 为唯一真相；变速/切段单测覆盖边界 |
 | R3 | HEVC 编码器可得性不可保证 | 中高 | 软件编码器 `mfh265enc.dll` 来自 Store 包 Microsoft.HEVCVideoExtension，从未安装过的**离线机器**首次初始化会因联网许可失败（`0x800704CF`），即 HEVC 编码可能完全不可用（D11-2）。应对：优先用 `MFTEnumEx`+`MFT_ENUM_FLAG_HARDWARE` 走厂商硬件 MFT（`[INFERENCE]` 不依赖该包，待 M1 实测）；缺失时回退 H.264 并在 UI 声明；安装包给出扩展安装指引 |
-| R4 | WinUI 3 与 Win32 自绘窗口混排、DPI 切换 | 中 | HUD 全部 Win32 顶层窗口自绘。**理由修正**（D11）：不是 XAML Island 透明「做不到」，而是不可靠——`SetLayeredWindowAttributes(LWA_COLORKEY)` 对 WinUI 3 窗口按设计无效，`SwapChainPanel` 属 external content 不支持透明，`IsAlwaysOnTop = true` 时点击穿透有已知缺陷。应对：Per-Monitor V2 清单（`SetThreadDpiAwarenessContext`）；HUD 独立窗口不叠在主壳上；混排回归用例 |
+| R4 | Tauri 窗口与 Win32 自绘 HUD 混排、DPI 切换 | 中 | 当前录制工作区使用 Tauri 窗口；后续 HUD 若采用 Win32 顶层窗口，使用 Per-Monitor V2 清单（`SetThreadDpiAwarenessContext`），并做混排回归；完整编辑器尚未实现。 |
 | R5 | 全局鼠标钩子受 UIPI 限制 | 中 | `WH_MOUSE_LL` + `GetCursorInfo` 轮询兜底；明确不支持提权窗口 |
 | R6 | 系统光标/壁纸无等价资源 | 中 | 内置光标包（按共享 ID）；壁纸仅用户自选 |
 | R7 | 浮点求值差异 | 中 | 全部 `double`，禁 `fast-math`，对拍工具兜底 |
