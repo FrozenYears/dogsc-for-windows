@@ -93,7 +93,7 @@ body.recording .signal { color: #ff927f; }
 .project-preview-actions span { color: #78836d; font: 9px 'DM Mono', monospace; word-break: break-word; }
 .project-rename-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
 .project-export-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
-.style-row { display: grid; grid-template-columns: minmax(180px, 1fr) 130px 130px auto; gap: 12px; align-items: end; margin-top: 12px; }
+.style-row { display: grid; grid-template-columns: minmax(170px, 1fr) 120px 120px 120px auto; gap: 12px; align-items: end; margin-top: 12px; }
 .style-row > button { height: 38px; white-space: nowrap; }
 .project-export-row > button { height: 38px; white-space: nowrap; }
 .project-rename-row > button { height: 38px; white-space: nowrap; }
