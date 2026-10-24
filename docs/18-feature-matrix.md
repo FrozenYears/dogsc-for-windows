@@ -23,7 +23,7 @@
 | Preview | 媒体解码 | P2a 部分已验收：MF SourceReader 首帧、0.1s seek、EOF 明确错误，H.264/HEVC 320×200 CLI smoke；P2b 增加 SourceReader→FrameSceneEvaluator→D2D/WARP 单帧合成并通过 GUI 0s；损坏媒体/音画同步/连续播放未完成 | `tools/capture_cli/frame.cpp` + D2D + Tauri | xiaoying frame source | 首帧、seek、EOF、坏帧 |
 | Preview | 实时播放/拖动 | P2b groundwork：native 持久 SourceReader 已接入 Tauri child，30fps 播放头/单飞请求和 D2D 单帧按钮已接入；尚未接入 DXGI surface、硬背压、丢帧统计和无撕裂 | DXGI + playback clock | 两仓库 preview/transport | 60Hz、掉帧<2%、无撕裂 |
 | Render | D2D/WARP 六层离屏 | 已实现，像素基准未完成 | `render/d2d` | 两仓库效果组织 | WARP 读回、PSNR 基准 |
-| Render | 光标/点击效果 | core 有部分，实时预览未接 | cursor renderer | xiaoying cursors | 光标位置/热点/点击波纹 |
+| Render | 光标/点击效果 | P3a 已接入 cursor size、click style/opacity/scale 控件并持久化；实际光标/点击帧合成仍部分 | cursor renderer | xiaoying cursors | 光标位置/热点/点击波纹 |
 | Render | 摄像头布局 | core/D2D 有部分 | compositor + inspector | adrian camera panel | 形状/镜像/阴影/缩放 |
 | Render | 背景/圆角/阴影/样机 | core/D2D 部分 | compositor | 两仓库 layout panels | 画布尺寸、裁切、颜色 |
 | Render | 模糊/spotlight/mosaic | core 模型部分，GUI 未接 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜 |

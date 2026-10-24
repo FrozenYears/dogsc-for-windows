@@ -383,6 +383,18 @@ RecorderProject apply_style(const RecorderProject& project, std::wstring_view st
         output.camera.is_hidden = false;
     } else if (style == L"cursor-size") {
         output.cursor_style.size = std::clamp(parse_double(arguments[0], "cursor-size"), 0.25, 6.0);
+    } else if (style == L"cursor-effect") {
+        const auto value = std::wstring_view(arguments[0]);
+        if (value == L"ripple") output.cursor_style.click_effect_style = CursorClickEffectStyle::kRipple;
+        else if (value == L"glow") output.cursor_style.click_effect_style = CursorClickEffectStyle::kGlow;
+        else if (value == L"pulse") output.cursor_style.click_effect_style = CursorClickEffectStyle::kPulse;
+        else if (value == L"burst") output.cursor_style.click_effect_style = CursorClickEffectStyle::kBurst;
+        else if (value == L"none") output.cursor_style.click_effect_style = CursorClickEffectStyle::kNone;
+        else throw std::invalid_argument("cursor-effect 无效");
+    } else if (style == L"cursor-opacity") {
+        output.cursor_style.click_opacity = std::clamp(parse_double(arguments[0], "cursor-opacity"), 0.05, 1.0);
+    } else if (style == L"cursor-scale") {
+        output.cursor_style.click_scale = std::clamp(parse_double(arguments[0], "cursor-scale"), 0.4, 3.0);
     } else {
         throw std::invalid_argument("未知 style 操作");
     }
