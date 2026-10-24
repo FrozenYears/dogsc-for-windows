@@ -142,6 +142,9 @@ std::filesystem::path history_directory(const std::filesystem::path& path) {
 std::filesystem::path draft_path(const std::filesystem::path& path) {
     return path.parent_path() / L".project-draft.json";
 }
+std::filesystem::path recovery_path(const std::filesystem::path& path) {
+    return path.parent_path() / L".project-recovery.json";
+}
 
 struct HistoryState {
     std::vector<std::string> states;
@@ -207,6 +210,12 @@ void write_text_atomically(const std::filesystem::path& path, const std::string&
         std::filesystem::remove(temporary, error);
         throw std::runtime_error("工程文件原子替换失败");
     }
+}
+
+void write_recovery_manifest(const std::filesystem::path& path) {
+    json manifest{{"version", 1}, {"projectPath", path.string()},
+                  {"draftPath", draft_path(path).string()}};
+    write_text_atomically(recovery_path(path), manifest.dump(2), L".dogsc-recovery.tmp");
 }
 
 void write_project_file(const std::filesystem::path& path, const std::string& text) {
@@ -278,7 +287,10 @@ void attach_history(json& result, const std::filesystem::path& path) {
         {"canUndo", !history.states.empty() && history.current > 0},
         {"canRedo", !history.states.empty() && history.current + 1 < history.states.size()},
     };
-    result["session"] = {{"dirty", std::filesystem::exists(draft_path(path))}};
+    result["session"] = {
+        {"dirty", std::filesystem::exists(draft_path(path))},
+        {"hasRecovery", std::filesystem::exists(recovery_path(path))},
+    };
 }
 
 json list_projects(const std::filesystem::path& root) {
@@ -332,8 +344,8 @@ json rename_project(const std::filesystem::path& project_path, std::wstring_view
 }
 void ensure_draft(const std::filesystem::path& path) {
     const auto draft = draft_path(path);
-    if (std::filesystem::exists(draft)) return;
-    copy_file_atomically(path, draft);
+    if (!std::filesystem::exists(draft)) copy_file_atomically(path, draft);
+    write_recovery_manifest(path);
 }
 
 RecorderProject read_draft(const std::filesystem::path& path) {
@@ -344,6 +356,7 @@ RecorderProject read_draft(const std::filesystem::path& path) {
 
 void write_draft(const std::filesystem::path& path, const RecorderProject& project) {
     write_text_atomically(draft_path(path), ProjectJson::encode(project), L".dogsc-draft.tmp");
+    write_recovery_manifest(path);
 }
 RecorderProject apply_edit(const RecorderProject& project, std::wstring_view operation,
                            int count, wchar_t** arguments) {
@@ -406,12 +419,15 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
     const auto normalized_path = normalize_project_path(project_path);
     if (action == L"begin") {
         if (argument_count != 0) throw std::invalid_argument("begin 不接受额外参数");
+        const bool had_recovery = std::filesystem::exists(draft_path(normalized_path)) ||
+            std::filesystem::exists(recovery_path(normalized_path));
         ensure_draft(normalized_path);
         const auto draft = read_draft(normalized_path);
         const auto duration = full_source_duration(draft);
         auto output = snapshot(draft, duration);
         attach_history(output, normalized_path);
         output["session"]["dirty"] = false;
+        output["session"]["hasRecovery"] = had_recovery;
         std::cout << output.dump(2) << '\n';
         return 0;
     }
@@ -434,6 +450,7 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
         commit_project(normalized_path, draft);
         std::error_code error;
         std::filesystem::remove(draft_path(normalized_path), error);
+        std::filesystem::remove(recovery_path(normalized_path), error);
         auto output = snapshot(draft, duration);
         attach_history(output, normalized_path);
         output["session"]["dirty"] = false;
@@ -444,6 +461,7 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
         if (argument_count != 0) throw std::invalid_argument("discard 不接受额外参数");
         std::error_code error;
         std::filesystem::remove(draft_path(normalized_path), error);
+        std::filesystem::remove(recovery_path(normalized_path), error);
         const auto project = read_project(normalized_path);
         const auto duration = full_source_duration(project);
         auto output = snapshot(project, duration);

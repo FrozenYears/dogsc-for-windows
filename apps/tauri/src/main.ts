@@ -29,7 +29,7 @@ type ProjectSnapshot = {
   outputDuration: number;
   segments: ProjectSegment[];
   history: { canUndo: boolean; canRedo: boolean };
-  session: { dirty: boolean };
+  session: { dirty: boolean; hasRecovery?: boolean };
 };
 
 type ProjectLibraryItem = {
@@ -592,7 +592,7 @@ async function loadProject(value: string) {
     projectFile = path;
     projectPathInput.value = path;
     renderProjectSnapshot();
-    projectLog(projectSnapshot.session.dirty ? "已恢复未保存草稿" : "工程已打开", false);
+    projectLog(projectSnapshot.session.hasRecovery ? "已发现并恢复未保存草稿" : "工程已打开", false);
   } catch (error) {
     projectLog(`打开工程失败：${String(error)}`, false);
   } finally {

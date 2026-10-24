@@ -40,6 +40,17 @@ try {
 
     $projectPath = $first
     $null = Invoke-Project "inspect" @("project", "inspect", $projectPath)
+    $begin = Invoke-Project "begin" @("project", "begin", $projectPath)
+    if ($begin.session.dirty) { throw "fresh begin should not be dirty" }
+    $draft = Invoke-Project "edit-draft" @("project", "edit-draft", $projectPath, "split", "5")
+    if (-not $draft.session.dirty -or -not (Test-Path (Join-Path $projectPath ".project-recovery.json"))) {
+        throw "draft recovery manifest was not created"
+    }
+    $restart = Invoke-Project "begin-recovery" @("project", "begin", $projectPath)
+    if (-not $restart.session.hasRecovery) { throw "begin did not report recovery" }
+    $discard = Invoke-Project "discard" @("project", "discard", $projectPath)
+    if ((Test-Path (Join-Path $projectPath ".project-draft.json")) -or
+        (Test-Path (Join-Path $projectPath ".project-recovery.json"))) { throw "discard left recovery files" }
     $null = Invoke-Project "split" @("project", "edit", $projectPath, "split", "5")
     $current = Get-Content (Join-Path $projectPath "project.json") -Raw | ConvertFrom-Json
     $segmentId = @($current.timeline.sourceSequence.segments)[1].id

@@ -8,9 +8,9 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 **移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染、P1a/P1b 项目生命周期与 P2a/P2b 预览基础已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、draft session、自动保存、flush/重试、重命名、时间线编辑、多步历史；MF SourceReader 单帧/持久 stream、Tauri child、30fps 播放请求与 D2D/WARP 单帧合成。
-- 已验证：Windows Release clean build；7/7 CTest（含项目 history/rename smoke）；P1b CLI draft/save/discard；H.264/HEVC 320×200 单帧与 0.1s seek；native stream 0/0.1 请求；最新 GUI draft 自动保存、D2D 预览和 P2b 播放头。
-- 尚未完成：崩溃恢复清单、脏状态的完整编辑器事务、吸附、DXGI 实时播放/拖动、硬背压、丢帧统计、无撕裂、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、draft session、自动保存、flush/重试、discard、recovery manifest、重命名、时间线编辑、多步历史；MF SourceReader 单帧/持久 stream、Tauri child、30fps 播放请求与 D2D/WARP 单帧合成。
+- 已验证：Windows Release clean build；7/7 CTest（含项目 history/rename smoke）；P1b CLI begin/edit-draft/save/discard/recovery smoke；H.264/HEVC 320×200 单帧与 0.1s seek；native stream 0/0.1 请求；最新 GUI draft 自动保存、D2D 预览和 P2b 播放头。
+- 尚未完成：真实关闭确认、崩溃恢复启动选择、脏状态的完整编辑器事务、吸附、DXGI 实时播放/拖动、硬背压、丢帧统计、无撕裂、SourceReader 时间线导出工作流、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
 
 ## 决策基线
 
