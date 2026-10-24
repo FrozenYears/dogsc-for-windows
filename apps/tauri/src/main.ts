@@ -46,6 +46,8 @@ type PreviewFrame = { time: number; width: number; height: number; mime: string;
 let projectSnapshot: ProjectSnapshot | null = null;
 let projectFile = "";
 let projectLibrary: ProjectLibrary | null = null;
+let previewChild: CaptureChild | null = null;
+let previewBuffer = "";
 
 const defaultDirectory = async () => join(await homeDir(), "Videos", "DogSC");
 
@@ -275,28 +277,58 @@ async function runProjectRename(path: string, name: string): Promise<{ path: str
   });
 }
 
-async function runProjectFrame(path: string, seconds: number): Promise<PreviewFrame> {
-  const command = Command.sidecar("binaries/dogsc_capture", ["project", "frame", path, String(seconds), "960"]);
-  let output = "";
-  let errors = "";
-  return await new Promise((resolve, reject) => {
-    let settled = false;
-    const fail = (error: unknown) => {
-      if (settled) return;
-      settled = true;
-      reject(error instanceof Error ? error : new Error(String(error)));
-    };
-    command.stdout.on("data", (line) => { output += String(line); });
-    command.stderr.on("data", (line) => { errors += String(line); });
-    command.on("error", fail);
-    command.on("close", (event) => {
-      if (settled) return;
-      if (event.code !== 0) { fail(new Error(errors.trim() || `预览命令退出（exit ${event.code ?? "unknown"}）`)); return; }
-      try { settled = true; resolve(JSON.parse(output) as PreviewFrame); }
-      catch (error) { fail(new Error(`预览命令返回了无效 JSON：${String(error)}`)); }
-    });
-    void command.spawn().catch(fail);
-  });
+async function stopPreviewStream() {
+  if (previewChild) {
+    try { await previewChild.kill(); } catch { /* 进程已退出 */ }
+    previewChild = null;
+  }
+  previewBuffer = "";
+  projectPreviewImage.removeAttribute("src");
+  projectPreviewStatus.textContent = "未加载预览";
+
+}
+function consumePreviewLines(chunk: string) {
+  previewBuffer += chunk;
+  let newline = previewBuffer.indexOf("\n");
+  while (newline >= 0) {
+    const line = previewBuffer.slice(0, newline).trim();
+    previewBuffer = previewBuffer.slice(newline + 1);
+    if (line) {
+      try {
+        const payload = JSON.parse(line) as PreviewFrame | { error: string };
+        if ("error" in payload) projectPreviewStatus.textContent = `预览失败：${payload.error}`;
+        else {
+          projectPreviewImage.src = payload.data;
+          projectPreviewStatus.textContent = `${payload.width}×${payload.height} @ ${payload.time.toFixed(2)}s`;
+        }
+      } catch (error) {
+        projectPreviewStatus.textContent = `预览返回无效 JSON：${String(error)}`;
+      }
+    }
+    newline = previewBuffer.indexOf("\n");
+  }
+}
+
+async function startPreviewStream() {
+  if (!projectFile || previewChild) return;
+  const command = Command.sidecar("binaries/dogsc_capture", ["project", "stream", projectFile, "960"]);
+  command.stdout.on("data", (line) => consumePreviewLines(String(line)));
+  command.stderr.on("data", (line) => { projectPreviewStatus.textContent = `预览错误：${String(line).trim()}`; });
+  command.on("close", () => { previewChild = null; });
+  try { previewChild = await command.spawn(); }
+  catch (error) { projectPreviewStatus.textContent = `预览启动失败：${String(error)}`; }
+}
+
+async function loadPreviewFrame() {
+  if (!projectFile) return;
+  projectPreviewFrame.disabled = true;
+  projectPreviewStatus.textContent = "解码中…";
+  await startPreviewStream();
+  if (previewChild) {
+    try { await previewChild.write(`F ${Number(editTime.value) || 0}\n`); }
+    catch (error) { projectPreviewStatus.textContent = `预览请求失败：${String(error)}`; }
+  }
+  updateEditorButtons();
 }
 
 function renderProjectSnapshot() {
@@ -401,6 +433,7 @@ async function refreshLibrary() {
 async function loadProject(value: string) {
   const path = normalizeProjectFile(value);
   if (!path) { projectLog("请输入 project.json 路径", false); return; }
+  await stopPreviewStream();
   projectOpen.disabled = true;
   projectLog(`正在打开 ${path}`, true);
   try {
@@ -463,20 +496,6 @@ async function renameProject() {
   }
 }
 
-async function loadPreviewFrame() {
-  if (!projectFile) return;
-  projectPreviewFrame.disabled = true;
-  projectPreviewStatus.textContent = "解码中…";
-  try {
-    const frame = await runProjectFrame(projectFile, Number(editTime.value) || 0);
-    projectPreviewImage.src = frame.data;
-    projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s`;
-  } catch (error) {
-    projectPreviewStatus.textContent = `预览失败：${String(error)}`;
-  } finally {
-    updateEditorButtons();
-  }
-}
 
 projectOpen.addEventListener("click", () => { void loadProject(projectPathInput.value); });
 railProjects.addEventListener("click", () => { document.querySelector(".editor-panel")?.scrollIntoView({ behavior: "smooth" }); });
