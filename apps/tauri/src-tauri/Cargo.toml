@@ -1,0 +1,17 @@
+[package]
+name = "dogsc-tauri"
+version = "0.1.0"
+description = "DogSC Windows Tauri shell"
+authors = ["FrozenYears"]
+edition = "2021"
+
+[lib]
+name = "dogsc_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
