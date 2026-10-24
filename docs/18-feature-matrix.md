@@ -1,0 +1,46 @@
+# 大部分功能迁移矩阵
+
+状态：`已实现` = 当前代码存在；`已验收` = 有真实构建/测试/GUI/媒体证据；`部分` = 有核心或 CLI，但产品链路未闭合；`未实现` = 尚未接入。
+
+| 领域 | 原版能力 | 当前 Windows 状态 | 目标模块 | 参考仓库借鉴点 | 验收方式 |
+|---|---|---|---|---|---|
+| Capture | 显示器录制 | 已验收短时 CLI/GUI | `src/capture` | xiaoying `recording.js`；adrian `CaptureEngine.cs` | 60 秒/4K60、PTS、恢复 |
+| Capture | 窗口录制 | 部分，CLI 支持窗口句柄 | `screen_capture` + 选择器 | adrian 窗口边界与持续捕获 | 窗口移动/遮挡矩阵 |
+| Capture | 区域录制 | 核心参数已存在，UI 未接入 | 选择器 + WGC | xiaoying area picker | GUI 选择区域并验收输出尺寸 |
+| Capture | 系统声音/麦克风 | CLI 已接入，GUI 参数已接入 | `audio_capture` | 两仓库音频轨生命周期 | 独立音轨、暂停同步 |
+| Capture | 摄像头 | CLI opt-in 已接入，编辑预览未接入 | `camera_capture` | adrian camera overlay | 设备首帧、镜像、断开恢复 |
+| Capture | 指针轨/点击 | 指针轨已接入 | `pointer_capture` + core | xiaoying pointer recorder | 光标不入原始视频、JSONL 可重放 |
+| Capture | 录制标记 | 未实现 | orchestration/project | xiaoying marker flow | 录制中标记→工程→编辑器 |
+| Project | project.json 编解码 | 已验收 | `project_json` | 两仓库字段/保存语义 | 读写逐字段稳定 |
+| Project | 工程库/最近项目 | 未实现 | Tauri + project service | xiaoying `library` | 枚举、打开、重命名、最近项目 |
+| Project | 原子保存/previous/recovery | 部分，编辑 CLI 已有 previous | project store | adrian save/recovery | 中断写入后恢复 |
+| Project | 自动保存/关闭确认 | 未实现 | orchestration/Tauri | 两仓库 dirty-state | 脏工程关闭/重启恢复 |
+| Timeline | 分割/裁切/删除 | GUI 已验收 | core + Tauri | 两仓库 timeline controls | 重载后几何一致 |
+| Timeline | 变速 | GUI 已验收 | core + Tauri | xiaoying speed regions | 0.5×…100×边界、音画同步 |
+| Timeline | 重排/吸附 | CLI 有，GUI 未接入 | core + Tauri | adrian timeline drag | 非 no-op 顺序断言、吸附边界 |
+| Timeline | 撤销/重做 | core 可变换，UI 未实现 | editor store | 两仓库 command/history | 多步编辑 undo/redo |
+| Timeline | 自动运镜/缩放 | core 求值已存在，UI/预览未接入 | frame tracks + inspector | 两仓库 auto-zoom | 点击分组、spring、剪切桥接 |
+| Preview | 媒体解码 | 未实现 | SourceReader/media source | xiaoying frame source | 首帧、seek、EOF、坏帧 |
+| Preview | 实时播放/拖动 | 未实现 | DXGI + playback clock | 两仓库 preview/transport | 60Hz、掉帧<2%、无撕裂 |
+| Render | D2D/WARP 六层离屏 | 已实现，像素基准未完成 | `render/d2d` | 两仓库效果组织 | WARP 读回、PSNR 基准 |
+| Render | 光标/点击效果 | core 有部分，实时预览未接 | cursor renderer | xiaoying cursors | 光标位置/热点/点击波纹 |
+| Render | 摄像头布局 | core/D2D 有部分 | compositor + inspector | adrian camera panel | 形状/镜像/阴影/缩放 |
+| Render | 背景/圆角/阴影/样机 | core/D2D 部分 | compositor | 两仓库 layout panels | 画布尺寸、裁切、颜色 |
+| Render | 模糊/spotlight/mosaic | core 模型部分，GUI 未接 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜 |
+| Render | 贴图/层级/动画 | core 模型部分，GUI 未接 | compositor + assets | 两仓库 sticker UI | 素材路径安全、层级/出入场 |
+| Render | 屏幕 3D/开场 | core 部分，GUI/预览未接 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界 |
+| Export | SourceReader 时间线合成 | 未实现 | export pipeline | xiaoying export.js；adrian VideoExporter | 分段/变速/音频映射 |
+| Export | MP4/M4A 最终导出 | 采集写盘有，编辑导出无 | MF/FFmpeg dynamic | 两仓库 export cancel | MP4/M4A 可重开、取消无半成品 |
+| Export | 进度/取消/重试 | 未实现 | Tauri orchestration | adrian export dialog | 取消后可重试 |
+| Shell | Tauri 录制壳 | 已验收 | `apps/tauri` | xiaoying Electron UI 仅作交互参照 | 安装包真实 GUI |
+| Shell | 中文基础界面 | 已实现部分 | Tauri | 两仓库布局/检查器 | UI smoke |
+| Shell | 英文/本地化切换 | 未实现 | localization | xiaoying localization | 运行时切换 |
+| Shell | 设置/权限/托盘/备忘录 | 未实现或部分 | Tauri/Win32 | adrian dialogs/memo | 权限失败、托盘、保存 |
+| Release | FFmpeg 动态 LGPL | 当前配置部分满足 | CMake/vcpkg/package | 不复制 adrian GPL 包 | DLL、源码、补丁、NOTICE 审计 |
+| Release | 长时/跨硬件 | 未完成 | capture/export | 两仓库测试矩阵思路 | 4K60、混合显卡、休眠恢复 |
+
+## 参考实现边界
+
+- `xiaoying8666/dogscwindows`：Electron + JavaScript + ffmpeg/WebCodecs；只借鉴项目库、时间线、编辑器交互和 selftest 组织，不能替代当前 C++/Tauri native pipeline。
+- `adrian147258/dogsc`：C#/.NET/WPF Windows 适配；只借鉴 Windows 行为、效果/检查器状态、保存恢复和测试思路。
+- adrian 仓库 README 明确随附 Gyan FFmpeg/ffprobe 为 GPLv3 构建；本项目不得复制其二进制、构建脚本或 GPL 依赖配置。当前项目仍必须使用动态 FFmpeg/LGPL 边界。

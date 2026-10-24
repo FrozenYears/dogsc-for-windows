@@ -137,3 +137,14 @@ Media Foundation 官方文档明确支持 remux 不重编码：`IMFSinkWriter` �
 4. 具备热点定义能力（hotspot 坐标）。
 
 若开源库无法同时满足，再启动 AI 生成或自绘，优先级排在 M3 之后。
+
+## D17 大部分功能迁移与外部参考仓库（2026-10-24）
+
+用户确认采用桌面 demo 编辑器作为“大部分功能完成”边界，按 `docs/17-majority-migration-plan.md` 的 P0→P6 顺序推进。两个外部研究仓库固定为：
+
+1. `xiaoying8666/dogscwindows@3bdcf00d4eb12a107c093e98aac7a894aedd2843`：MIT，Electron/JavaScript Windows 适配；只借鉴项目库、编辑器交互、预览/导出编排和 selftest，不替代当前 C++/Tauri native pipeline。
+2. `adrian147258/dogsc@72ee935ddc9ac479acfec44f41db536db998f50e`：MIT 应用源码，C#/WPF Windows 适配；只借鉴采集行为、检查器/效果交互、保存恢复和测试思路。
+
+代码策略为“重写适配并保留归属”，不复制 Electron/WPF 主进程或大段 UI。特别是 adrian 仓库 README 声明其随附 Gyan FFmpeg/ffprobe 为 GPLv3 构建；本项目要求动态 FFmpeg/LGPL，**禁止复制其 FFmpeg 二进制、GPL 构建/打包脚本和依赖配置**。边界与来源详见 `THIRD_PARTY_NOTICES.md`。
+
+连带影响：停止条件增加项目库/恢复、完整时间线、实时预览、主要效果、MP4/M4A 导出、基础设置/权限等可执行验收；iOS、自动更新、HDR、macOS 工程互通和发布法律审查继续不属于首版完成定义。
