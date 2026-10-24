@@ -26,3 +26,9 @@ Thumbs.db
 test-output/
 *.pdb
 *.ilk
+
+# Tauri / Node
+apps/tauri/node_modules/
+apps/tauri/dist/
+apps/tauri/src-tauri/target/
+apps/tauri/src-tauri/binaries/
