@@ -115,6 +115,7 @@ app.innerHTML = `
           <div class="project-rename-row"><label class="field"><span>工程名称</span><input id="project-rename-name" type="text" spellcheck="false" placeholder="新工程目录名" /></label><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
           <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div><strong id="project-save-state">未打开</strong><span>保存状态</span></div><div class="project-history-actions"><button id="project-save" class="secondary" type="button" disabled>保存</button><button id="project-discard" class="secondary danger" type="button" disabled>放弃草稿</button><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
           <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
+          <div class="project-export-row"><label class="field"><span>导出 MP4</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary" type="button" disabled>导出</button></div>
           <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
           <div class="editor-controls">
             <label class="field"><span>时间点（秒）</span><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /></label>
@@ -176,6 +177,8 @@ const projectPreviewPlay = $("project-preview-play") as HTMLButtonElement;
 const projectSaveState = $("project-save-state");
 const projectSave = $("project-save") as HTMLButtonElement;
 const projectDiscard = $("project-discard") as HTMLButtonElement;
+const projectExportPath = $("project-export-path") as HTMLInputElement;
+const projectExport = $("project-export") as HTMLButtonElement;
 let autoSaveTimer: number | undefined;
 let projectCommandBusy = false;
 let previewPlaying = false;
@@ -305,6 +308,30 @@ async function runProjectCompositeFrame(path: string, seconds: number): Promise<
       if (event.code !== 0) { fail(new Error(errors.trim() || `合成预览命令退出（exit ${event.code ?? "unknown"}）`)); return; }
       try { settled = true; resolve(JSON.parse(output) as PreviewFrame); }
       catch (error) { fail(new Error(`合成预览命令返回了无效 JSON：${String(error)}`)); }
+    });
+    void command.spawn().catch(fail);
+  });
+}
+
+async function runProjectExport(path: string, output: string): Promise<{ output: string; frameCount: number; duration: number }> {
+  const command = Command.sidecar("binaries/dogsc_capture", ["project", "export-video", path, output, "30"]);
+  let text = "";
+  let errors = "";
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    command.stdout.on("data", (line) => { text += String(line); });
+    command.stderr.on("data", (line) => { errors += String(line); });
+    command.on("error", fail);
+    command.on("close", (event) => {
+      if (settled) return;
+      if (event.code !== 0) { fail(new Error(errors.trim() || `导出命令退出（exit ${event.code ?? "unknown"}）`)); return; }
+      try { settled = true; resolve(JSON.parse(text) as { output: string; frameCount: number; duration: number }); }
+      catch (error) { fail(new Error(`导出命令返回了无效 JSON：${String(error)}`)); }
     });
     void command.spawn().catch(fail);
   });
@@ -477,6 +504,7 @@ function updateEditorButtons() {
   projectRename.disabled = !hasProject || !projectRenameName.value.trim();
   projectPreviewFrame.disabled = !hasProject;
   projectPreviewPlay.disabled = !hasProject;
+  projectExport.disabled = !hasProject || projectCommandBusy || !projectExportPath.value.trim();
   const dirty = snapshot?.session?.dirty ?? false;
   projectSave.disabled = !hasProject || !dirty || projectCommandBusy;
   projectDiscard.disabled = !hasProject || !dirty || projectCommandBusy;
@@ -592,6 +620,7 @@ async function loadProject(value: string) {
     projectFile = path;
     projectPathInput.value = path;
     renderProjectSnapshot();
+    projectExportPath.value = `${path.replace(/[\\/]+project\.json$/i, "")}\\export.mp4`;
     projectLog(projectSnapshot.session.hasRecovery ? "已发现并恢复未保存草稿" : "工程已打开", false);
   } catch (error) {
     projectLog(`打开工程失败：${String(error)}`, false);
@@ -653,6 +682,21 @@ async function renameProject() {
   }
 }
 
+async function exportProject() {
+  if (!projectFile || !projectExportPath.value.trim() || !(await flushProjectSave())) return;
+  projectCommandBusy = true;
+  projectExport.disabled = true;
+  try {
+    const result = await runProjectExport(projectFile, projectExportPath.value.trim());
+    projectLog(`导出完成：${result.frameCount} 帧，${result.duration.toFixed(2)}s`, false);
+  } catch (error) {
+    projectLog(`导出失败：${String(error)}`, false);
+  } finally {
+    projectCommandBusy = false;
+    updateEditorButtons();
+  }
+}
+
 
 projectOpen.addEventListener("click", () => { void loadProject(projectPathInput.value); });
 railProjects.addEventListener("click", () => { document.querySelector(".editor-panel")?.scrollIntoView({ behavior: "smooth" }); });
@@ -682,6 +726,8 @@ projectPreviewFrame.addEventListener("click", () => { void loadPreviewFrame(); }
 projectPreviewPlay.addEventListener("click", () => { void togglePreviewPlay(); });
 projectSave.addEventListener("click", () => { void flushProjectSave(); });
 projectDiscard.addEventListener("click", () => { void discardProjectDraft(); });
+projectExportPath.addEventListener("input", updateEditorButtons);
+projectExport.addEventListener("click", () => { void exportProject(); });
 window.addEventListener("beforeunload", (event) => {
   if (projectCommandBusy || projectSnapshot?.session?.dirty) {
     event.preventDefault();

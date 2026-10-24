@@ -92,6 +92,8 @@ body.recording .signal { color: #ff927f; }
 .project-preview-actions { display: grid; gap: 8px; min-width: 130px; }
 .project-preview-actions span { color: #78836d; font: 9px 'DM Mono', monospace; word-break: break-word; }
 .project-rename-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.project-export-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.project-export-row > button { height: 38px; white-space: nowrap; }
 .project-rename-row > button { height: 38px; white-space: nowrap; }
 .project-library-row > button { height: 38px; white-space: nowrap; }
 .project-library { display: flex; gap: 8px; min-height: 40px; overflow-x: auto; padding: 5px; border: 1px solid #292e26; border-radius: 7px; background: #10110e; }

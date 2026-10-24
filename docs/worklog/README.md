@@ -17,3 +17,4 @@
 | 11 | 2026-10-24 | P2a SourceReader 单帧预览帧接入与 H.264/HEVC smoke | [2026-10-24-07.md](2026-10-24-07.md) |
 | 12 | 2026-10-24 | P2b 持久 SourceReader 预览流 groundwork | [2026-10-24-08.md](2026-10-24-08.md) |
 | 13 | 2026-10-25 | P1b draft session、自动保存、flush 与关闭保护 | [2026-10-25-01.md](2026-10-25-01.md) |
+| 14 | 2026-10-25 | P4 单源 SourceReader→D2D→MediaWriter 视频导出 prototype | [2026-10-25-02.md](2026-10-25-02.md) |

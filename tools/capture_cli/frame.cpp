@@ -21,6 +21,7 @@
 #include "dogsc/project_json.hpp"
 #include "dogsc/d2d_frame_compositor.hpp"
 #include "dogsc/frame_scene_evaluator.hpp"
+#include "dogsc/native_capture.hpp"
 
 namespace dogsc::cli {
 namespace {
@@ -139,6 +140,8 @@ public:
         return bmp;
     }
 
+    [[nodiscard]] std::uint32_t width() const { return width_; }
+    [[nodiscard]] std::uint32_t height() const { return height_; }
 private:
     winrt::com_ptr<IMFSourceReader> reader_;
     UINT width_ = 0;
@@ -219,6 +222,66 @@ json composite_frame_json(const std::filesystem::path& project_path, double seco
     return json{{"time", seconds}, {"width", width}, {"height", height},
                 {"mime", "image/bmp"}, {"data", "data:image/bmp;base64," + base64(bmp)}};
 }
+winrt::com_ptr<ID3D11Texture2D> texture_from_bgra(ID3D11Device* device, ID3D11DeviceContext* context,
+                                                   const std::vector<std::uint8_t>& pixels,
+                                                   std::uint32_t width, std::uint32_t height) {
+    const auto row_bytes = static_cast<std::size_t>(width) * 4;
+    if (pixels.size() < row_bytes * height) throw std::runtime_error("媒体帧像素尺寸无效");
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width; desc.Height = height; desc.MipLevels = 1; desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    winrt::com_ptr<ID3D11Texture2D> texture;
+    winrt::check_hresult(device->CreateTexture2D(&desc, nullptr, texture.put()));
+    context->UpdateSubresource(texture.get(), 0, nullptr, pixels.data(), static_cast<UINT>(row_bytes), 0);
+    return texture;
+}
+
+json export_video_json(const std::filesystem::path& project_path, const std::filesystem::path& output,
+                       int frame_rate) {
+    const auto project = load_project(project_path);
+    if (!project.media || !project.media->screen.source_end_time) throw std::runtime_error("工程缺少屏幕媒体时长");
+    const auto duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
+    if (!std::isfinite(duration) || duration <= 0) throw std::runtime_error("屏幕媒体时长无效");
+    if (frame_rate < 1 || frame_rate > 120) throw std::invalid_argument("导出帧率必须在 1..120 之间");
+    FrameReader reader(media_path(project_path));
+    winrt::com_ptr<ID3D11Device> device;
+    winrt::com_ptr<ID3D11DeviceContext> context;
+    winrt::check_hresult(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT, nullptr, 0,
+        D3D11_SDK_VERSION, device.put(), nullptr, context.put()));
+    std::string error;
+    auto compositor = D2DFrameCompositor::create(device.get(), error);
+    if (!compositor) throw std::runtime_error("D2D 合成器创建失败: " + error);
+    capture::WriterOptions options;
+    options.path = output.wstring(); options.width = reader.width(); options.height = reader.height();
+    options.frame_rate = frame_rate; options.codec = capture::VideoCodec::h264; options.fragmented = false;
+    capture::MediaWriter writer(device.get(), options);
+    const auto frame_count = static_cast<std::int64_t>(std::ceil(duration * frame_rate));
+    const auto frame_duration = static_cast<std::int64_t>(10000000 / frame_rate);
+    for (std::int64_t index = 0; index < frame_count; ++index) {
+        const auto time = static_cast<double>(index) / frame_rate;
+        std::uint32_t width = 0, height = 0;
+        const auto input_bmp = reader.read_bmp(static_cast<std::int64_t>(time * 10000000),
+                                               std::numeric_limits<std::uint32_t>::max(), width, height);
+        const auto row_bytes = static_cast<std::size_t>(width) * 4;
+        std::vector<std::uint8_t> pixels(row_bytes * height);
+        for (std::uint32_t y = 0; y < height; ++y) {
+            const auto* source = input_bmp.data() + 54 + static_cast<std::size_t>(height - 1 - y) * row_bytes;
+            std::memcpy(pixels.data() + static_cast<std::size_t>(y) * row_bytes, source, row_bytes);
+        }
+        const auto texture = texture_from_bgra(device.get(), context.get(), pixels, width, height);
+        const auto plan = FrameSceneEvaluator::render_plan(project, time, duration, frame_rate,
+            CompositionSize{static_cast<double>(width), static_cast<double>(height)});
+        FrameRenderResources resources; resources.screen = texture.get();
+        if (!compositor->compose(plan, resources)) throw std::runtime_error(std::string(compositor->last_error()));
+        writer.write_video(compositor->output_texture(), index * frame_duration, frame_duration);
+    }
+    writer.finalize();
+    return json{{"output", output.string()}, {"frameRate", frame_rate},
+                {"frameCount", frame_count}, {"duration", duration},
+                {"encoder", writer.video_encoder_name()}};
+}
 }  // namespace
 
 int project_frame_command(const std::filesystem::path& project_path, double seconds,
@@ -253,6 +316,12 @@ int project_composite_frame_command(const std::filesystem::path& project_path, d
     const auto normalized = project_path.extension() == ".json" ? project_path : project_path / "project.json";
     if (!std::isfinite(seconds) || seconds < 0) throw std::invalid_argument("预览时间必须是非负有限数字");
     std::cout << composite_frame_json(normalized, seconds, max_width).dump() << '\n';
+    return 0;
+}
+int project_export_video_command(const std::filesystem::path& project_path,
+                                 const std::filesystem::path& output, int frame_rate) {
+    const auto normalized = project_path.extension() == ".json" ? project_path : project_path / "project.json";
+    std::cout << export_video_json(normalized, output, frame_rate).dump(2) << '\n';
     return 0;
 }
 }  // namespace dogsc::cli
