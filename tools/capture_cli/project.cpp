@@ -1,5 +1,6 @@
 #include "commands.hpp"
 
+#include <array>
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -358,6 +359,47 @@ void write_draft(const std::filesystem::path& path, const RecorderProject& proje
     write_text_atomically(draft_path(path), ProjectJson::encode(project), L".dogsc-draft.tmp");
     write_recovery_manifest(path);
 }
+RecorderProject apply_style(const RecorderProject& project, std::wstring_view style,
+                            int count, wchar_t** arguments) {
+    if (count != 1) throw std::invalid_argument("style 需要一个值");
+    auto output = project;
+    if (style == L"background") {
+        const std::string preset = winrt::to_string(arguments[0]);
+        static constexpr std::array<std::string_view, 5> presets{
+            "黑曜石网格", "工程白网格", "暗夜星阵", "建筑极简点", "立体等角网"};
+        if (std::find(presets.begin(), presets.end(), preset) == presets.end()) {
+            throw std::invalid_argument("背景预设无效");
+        }
+        output.canvas.background_source.kind = BackgroundSourceKind::kPattern;
+        output.canvas.background_source.pattern_preset = preset;
+    } else if (style == L"padding") {
+        output.canvas.padding = std::clamp(parse_double(arguments[0], "padding"), 0.0, 1000.0);
+    } else if (style == L"camera-hidden") {
+        const auto value = std::wstring_view(arguments[0]);
+        if (value != L"true" && value != L"false") throw std::invalid_argument("camera-hidden 需要 true/false");
+        output.camera.is_hidden = value == L"true";
+    } else if (style == L"camera-size") {
+        output.camera.size = std::clamp(parse_double(arguments[0], "camera-size"), 0.05, 1.0);
+        output.camera.is_hidden = false;
+    } else if (style == L"cursor-size") {
+        output.cursor_style.size = std::clamp(parse_double(arguments[0], "cursor-size"), 0.25, 6.0);
+    } else {
+        throw std::invalid_argument("未知 style 操作");
+    }
+    return output;
+}
+
+RecorderProject apply_edit(const RecorderProject& project, std::wstring_view operation,
+                           int count, wchar_t** arguments);
+RecorderProject apply_project_operation(const RecorderProject& project, std::wstring_view operation,
+                                        int count, wchar_t** arguments) {
+    if (operation == L"style") {
+        if (count < 1) throw std::invalid_argument("style 缺少子操作");
+        return apply_style(project, arguments[0], count - 1, arguments + 1);
+    }
+    return apply_edit(project, operation, count, arguments);
+}
+
 RecorderProject apply_edit(const RecorderProject& project, std::wstring_view operation,
                            int count, wchar_t** arguments) {
     const auto duration = full_source_duration(project);
@@ -435,7 +477,7 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
         if (argument_count < 1) throw std::invalid_argument("edit-draft 缺少操作");
         const auto draft = read_draft(normalized_path);
         const auto duration = full_source_duration(draft);
-        const auto edited = apply_edit(draft, arguments[0], argument_count - 1, arguments + 1);
+        const auto edited = apply_project_operation(draft, arguments[0], argument_count - 1, arguments + 1);
         write_draft(normalized_path, edited);
         auto output = snapshot(edited, duration);
         attach_history(output, normalized_path);
@@ -490,7 +532,7 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
     }
     if (action != L"edit") throw std::invalid_argument("项目动作仅支持 inspect/edit/undo/redo/rename/begin/edit-draft/save/discard");
     if (argument_count < 1) throw std::invalid_argument("edit 缺少操作");
-    const auto edited = apply_edit(project, arguments[0], argument_count - 1, arguments + 1);
+    const auto edited = apply_project_operation(project, arguments[0], argument_count - 1, arguments + 1);
     commit_project(normalized_path, edited);
     auto output = snapshot(edited, duration);
     attach_history(output, normalized_path);
