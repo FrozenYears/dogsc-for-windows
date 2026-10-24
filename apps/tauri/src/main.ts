@@ -140,6 +140,7 @@ start.addEventListener("click", async () => {
     const command = Command.sidecar("binaries/dogsc_capture", args);
     command.stdout.on("data", (line) => log(String(line)));
     command.stderr.on("data", (line) => log(String(line)));
+    command.on("error", (error) => log(`sidecar 启动失败：${String(error)}`));
     command.on("close", (event) => {
       recordingChild = null;
       stopTimer();

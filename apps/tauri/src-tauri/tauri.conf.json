@@ -30,6 +30,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "externalBin": ["binaries/dogsc_capture"]
+    "externalBin": ["binaries/dogsc_capture"],
+    "resources": {
+      "binaries/*.dll": ""
+    }
   }
 }

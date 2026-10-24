@@ -12,7 +12,8 @@
       "allow": [
         {
           "name": "binaries/dogsc_capture",
-          "sidecar": true
+          "sidecar": true,
+          "args": true
         }
       ]
     }
