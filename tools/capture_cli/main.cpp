@@ -30,6 +30,7 @@ void usage() {
         "  dogsc_capture project rename <project-directory> <new-name>\n"
         "  dogsc_capture project inspect <project.json|project-directory>\n"
         "  dogsc_capture project frame <project.json|project-directory> <seconds> [max-width]\n"
+        "  dogsc_capture project composite-frame <project.json|project-directory> <seconds> [max-width]\n"
         "  dogsc_capture project stream <project.json|project-directory> [max-width]\n"
         "  dogsc_capture project edit <project.json|project-directory> split <output-time>\n"
         "  dogsc_capture project edit <project.json|project-directory> trim <segment-id> <left|right> <output-time>\n"
@@ -82,6 +83,14 @@ int wmain(int argc, wchar_t** argv) {
                 throw std::invalid_argument("预览宽度必须在 1..4294967295 之间");
             }
             return dogsc::cli::project_frame_stream_command(argv[3],
+                static_cast<std::uint32_t>(requested_width));
+        }
+        if (command == L"project" && argc >= 5 && std::wstring_view(argv[2]) == L"composite-frame" && argc <= 6) {
+            const auto requested_width = argc == 6 ? integer(argv[5]) : 960;
+            if (requested_width == 0 || requested_width > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::invalid_argument("预览宽度必须在 1..4294967295 之间");
+            }
+            return dogsc::cli::project_composite_frame_command(argv[3], real(argv[4]),
                 static_cast<std::uint32_t>(requested_width));
         }
         if (command == L"project" && argc >= 5 && std::wstring_view(argv[2]) == L"frame" && argc <= 6) {

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <d3d11.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
@@ -18,6 +19,8 @@
 #include <winrt/base.h>
 
 #include "dogsc/project_json.hpp"
+#include "dogsc/d2d_frame_compositor.hpp"
+#include "dogsc/frame_scene_evaluator.hpp"
 
 namespace dogsc::cli {
 namespace {
@@ -150,6 +153,72 @@ json frame_json(FrameReader& reader, double seconds, std::uint32_t max_width) {
                 {"mime", "image/bmp"}, {"data", "data:image/bmp;base64," + base64(bmp)}};
 }
 
+RecorderProject load_project(const std::filesystem::path& path) {
+    RecorderProject project;
+    ProjectJsonError error;
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("无法打开工程文件");
+    std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (!ProjectJson::decode(text, project, error)) throw std::runtime_error("工程解析失败: " + error.detail);
+    return project;
+}
+
+std::vector<std::uint8_t> bmp_from_bgra(const std::vector<std::uint8_t>& pixels,
+                                        std::uint32_t width, std::uint32_t height) {
+    const std::size_t row_bytes = static_cast<std::size_t>(width) * 4;
+    if (pixels.size() < row_bytes * height) throw std::runtime_error("合成输出尺寸无效");
+    std::vector<std::uint8_t> bmp(54 + row_bytes * height, 0);
+    bmp[0] = 'B'; bmp[1] = 'M';
+    put_u32(bmp, 2, static_cast<std::uint32_t>(bmp.size()));
+    put_u32(bmp, 10, 54); put_u32(bmp, 14, 40);
+    put_u32(bmp, 18, width); put_u32(bmp, 22, height);
+    put_u16(bmp, 26, 1); put_u16(bmp, 28, 32); put_u32(bmp, 34, static_cast<std::uint32_t>(row_bytes * height));
+    for (std::uint32_t y = 0; y < height; ++y) {
+        const auto* source = pixels.data() + static_cast<std::size_t>(y) * row_bytes;
+        auto* destination = bmp.data() + 54 + static_cast<std::size_t>(height - 1 - y) * row_bytes;
+        std::memcpy(destination, source, row_bytes);
+    }
+    return bmp;
+}
+
+json composite_frame_json(const std::filesystem::path& project_path, double seconds,
+                          std::uint32_t max_width) {
+    const auto project = load_project(project_path);
+    if (!project.media || !project.media->screen.source_end_time) throw std::runtime_error("工程缺少屏幕媒体时长");
+    const auto duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
+    if (!std::isfinite(duration) || duration <= 0) throw std::runtime_error("屏幕媒体时长无效");
+    FrameReader reader(media_path(project_path));
+    std::uint32_t width = 0, height = 0;
+    const auto input_bmp = reader.read_bmp(static_cast<std::int64_t>(seconds * 10000000), max_width, width, height);
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4);
+    const auto row_bytes = static_cast<std::size_t>(width) * 4;
+    for (std::uint32_t y = 0; y < height; ++y) {
+        const auto* source = input_bmp.data() + 54 + static_cast<std::size_t>(height - 1 - y) * row_bytes;
+        std::memcpy(pixels.data() + static_cast<std::size_t>(y) * row_bytes, source, row_bytes);
+    }
+    std::string error;
+    auto compositor = D2DFrameCompositor::create_warp(error);
+    if (!compositor) throw std::runtime_error("D2D WARP 合成器创建失败: " + error);
+    winrt::com_ptr<ID3D11DeviceContext> context;
+    compositor->device()->GetImmediateContext(context.put());
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width; desc.Height = height; desc.MipLevels = 1; desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    winrt::com_ptr<ID3D11Texture2D> texture;
+    winrt::check_hresult(compositor->device()->CreateTexture2D(&desc, nullptr, texture.put()));
+    context->UpdateSubresource(texture.get(), 0, nullptr, pixels.data(), static_cast<UINT>(row_bytes), 0);
+    const auto plan = FrameSceneEvaluator::render_plan(project, seconds, duration,
+        project.export_settings.frame_rate, CompositionSize{static_cast<double>(width), static_cast<double>(height)});
+    FrameRenderResources resources;
+    resources.screen = texture.get();
+    if (!compositor->compose(plan, resources)) throw std::runtime_error(std::string(compositor->last_error()));
+    std::vector<std::uint8_t> output;
+    if (!compositor->read_back(output)) throw std::runtime_error(std::string(compositor->last_error()));
+    const auto bmp = bmp_from_bgra(output, width, height);
+    return json{{"time", seconds}, {"width", width}, {"height", height},
+                {"mime", "image/bmp"}, {"data", "data:image/bmp;base64," + base64(bmp)}};
+}
 }  // namespace
 
 int project_frame_command(const std::filesystem::path& project_path, double seconds,
@@ -177,6 +246,13 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             std::cout << json{{"error", error.what()}}.dump() << '\n' << std::flush;
         }
     }
+    return 0;
+}
+int project_composite_frame_command(const std::filesystem::path& project_path, double seconds,
+                                    std::uint32_t max_width) {
+    const auto normalized = project_path.extension() == ".json" ? project_path : project_path / "project.json";
+    if (!std::isfinite(seconds) || seconds < 0) throw std::invalid_argument("预览时间必须是非负有限数字");
+    std::cout << composite_frame_json(normalized, seconds, max_width).dump() << '\n';
     return 0;
 }
 }  // namespace dogsc::cli

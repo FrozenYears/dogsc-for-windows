@@ -280,6 +280,30 @@ async function runProjectRename(path: string, name: string): Promise<{ path: str
   });
 }
 
+async function runProjectCompositeFrame(path: string, seconds: number): Promise<PreviewFrame> {
+  const command = Command.sidecar("binaries/dogsc_capture", ["project", "composite-frame", path, String(seconds), "960"]);
+  let output = "";
+  let errors = "";
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    command.stdout.on("data", (line) => { output += String(line); });
+    command.stderr.on("data", (line) => { errors += String(line); });
+    command.on("error", fail);
+    command.on("close", (event) => {
+      if (settled) return;
+      if (event.code !== 0) { fail(new Error(errors.trim() || `合成预览命令退出（exit ${event.code ?? "unknown"}）`)); return; }
+      try { settled = true; resolve(JSON.parse(output) as PreviewFrame); }
+      catch (error) { fail(new Error(`合成预览命令返回了无效 JSON：${String(error)}`)); }
+    });
+    void command.spawn().catch(fail);
+  });
+}
+
 async function stopPreviewStream() {
   if (previewChild) {
     try { await previewChild.kill(); } catch { /* 进程已退出 */ }
@@ -361,10 +385,17 @@ async function requestPreviewFrame() {
 async function loadPreviewFrame() {
   if (!projectFile) return;
   projectPreviewFrame.disabled = true;
-  projectPreviewStatus.textContent = "解码中…";
-  await startPreviewStream();
-  await requestPreviewFrame();
-  updateEditorButtons();
+  projectPreviewStatus.textContent = "合成中…";
+  await stopPreviewStream();
+  try {
+    const frame = await runProjectCompositeFrame(projectFile, Number(editTime.value) || 0);
+    projectPreviewImage.src = frame.data;
+    projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s`;
+  } catch (error) {
+    projectPreviewStatus.textContent = `合成预览失败：${String(error)}`;
+  } finally {
+    updateEditorButtons();
+  }
 }
 
 async function togglePreviewPlay() {
