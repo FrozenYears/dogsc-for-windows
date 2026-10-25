@@ -764,6 +764,8 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             bool scene_has_click = false;
             bool scene_has_stickers = false;
             bool scene_has_spotlight = false;
+            bool scene_has_screen_frame = false;
+            bool scene_has_opening = false;
             if (compositor) {
                 try {
                     const auto texture = texture_from_bgra(overlay->device(), overlay->context(),
@@ -795,12 +797,6 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     const auto plan = FrameSceneEvaluator::render_plan(project, seconds, duration,
                         project.export_settings.frame_rate,
                         CompositionSize{static_cast<double>(width), static_cast<double>(height)}, inputs);
-                    scene_has_camera = plan.scene.camera.has_value();
-                    scene_has_cursor = plan.scene.cursor.has_value();
-                    scene_has_click = plan.scene.cursor && plan.scene.cursor->click_geometry.has_value();
-                    scene_has_spotlight = std::any_of(plan.scene.screen.mosaics.begin(), plan.scene.screen.mosaics.end(),
-                        [](const auto& item) { return item.style == MosaicEffectStyle::kSpotlight && item.transition_progress > 0; });
-                    scene_has_stickers = !plan.scene.stickers.empty();
                     FrameRenderResources resources;
                     resources.screen = texture.get();
                     resources.camera = camera_texture.get();
@@ -811,6 +807,14 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     if (!compositor->compose(plan, resources)) {
                         throw std::runtime_error(std::string(compositor->last_error()));
                     }
+                    scene_has_camera = plan.scene.camera.has_value();
+                    scene_has_cursor = plan.scene.cursor.has_value();
+                    scene_has_click = plan.scene.cursor && plan.scene.cursor->click_geometry.has_value();
+                    scene_has_spotlight = std::any_of(plan.scene.screen.mosaics.begin(), plan.scene.screen.mosaics.end(),
+                        [](const auto& item) { return item.style == MosaicEffectStyle::kSpotlight && item.transition_progress > 0; });
+                    scene_has_stickers = !plan.scene.stickers.empty();
+                    scene_has_screen_frame = plan.scene.screen.decoration.has_value();
+                    scene_has_opening = project.opening_sequence.is_enabled && seconds < project.opening_sequence.duration;
                     composed = true;
                 } catch (const std::exception& error) {
                     std::cerr << "D2D preview composition failed; using source frame: " << error.what() << '\n';
@@ -835,8 +839,8 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             auto response = json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
-                {"composed", composed}, {"camera", scene_has_camera}, {"cursor", scene_has_cursor}, {"click", scene_has_click},
                 {"spotlight", scene_has_spotlight}, {"stickers", scene_has_stickers},
+                {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening},
                 {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}};
             if (const auto statistics = overlay->frame_statistics()) {
                 response["frameStatistics"] = json{{"presentCount", statistics->present_count},

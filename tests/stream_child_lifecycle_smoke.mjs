@@ -22,11 +22,17 @@ const appPath = resolve(appArgument);
 let projectA = projectPath(projectAArgument);
 const projectB = projectPath(projectBArgument);
 let temporaryProjectA = "";
-if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1") {
+if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" || process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1" || process.env.DOGSC_REQUIRE_OPENING === "1") {
   temporaryProjectA = mkdtempSync(join(tmpdir(), "dogsc-scene-smoke-"));
   const sourceProject = JSON.parse(readFileSync(projectA, "utf8"));
   if (process.env.DOGSC_REQUIRE_CURSOR === "1") {
     sourceProject.cursorStyle = { ...sourceProject.cursorStyle, assetID: "system.arrow" };
+  }
+  if (process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1") {
+    sourceProject.canvas = { ...sourceProject.canvas, screenFrame: "browserDark" };
+  }
+  if (process.env.DOGSC_REQUIRE_OPENING === "1") {
+    sourceProject.openingSequence = { ...sourceProject.openingSequence, isEnabled: true, duration: 1.0, stagger: 0.1 };
   }
   for (const reference of Object.values(sourceProject.media ?? {})) {
     if (!reference?.relativePath) continue;
@@ -203,7 +209,9 @@ try {
     const ready = status.includes("丢帧") &&
       (process.env.DOGSC_REQUIRE_CURSOR !== "1" || status.includes("click")) &&
       (process.env.DOGSC_REQUIRE_STICKERS !== "1" || status.includes("stickers")) &&
-      (process.env.DOGSC_REQUIRE_SPOTLIGHT !== "1" || status.includes("spotlight"));
+      (process.env.DOGSC_REQUIRE_SPOTLIGHT !== "1" || status.includes("spotlight")) &&
+      (process.env.DOGSC_REQUIRE_SCREEN_FRAME !== "1" || status.includes("screen-frame")) &&
+      (process.env.DOGSC_REQUIRE_OPENING !== "1" || status.includes("opening"));
     if (ready) previewStatusA = status;
     return ready;
   });
@@ -227,6 +235,12 @@ try {
   }
   if (process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" && !previewStatusA.includes("spotlight")) {
     throw new Error(`工程 A 未产生 spotlight scene 层: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1" && !previewStatusA.includes("screen-frame")) {
+    throw new Error(`工程 A 未产生 screen frame scene 层: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_OPENING === "1" && !previewStatusA.includes("opening")) {
+    throw new Error(`工程 A 未产生 opening scene 层: ${previewStatusA}`);
   }
   if (process.env.DOGSC_EXERCISE_WINDOW === "1") {
     const beforeWindow = windowCommand("get");
