@@ -26,3 +26,4 @@
 | 20 | 2026-10-25 | P2b DXGI decoder surface、bounded preview、D2D scene 与 native swapchain overlay | [2026-10-25-08.md](2026-10-25-08.md) |
 | 21 | 2026-10-25 | P3 实时预览接入光标、点击效果与摄像头布局 | [2026-10-25-09.md](2026-10-25-09.md) |
 | 22 | 2026-10-25 | P4 主时间线导出映射与 screen motion editor | [2026-10-25-10.md](2026-10-25-10.md) |
+| 23 | 2026-10-25 | Tauri editor macOS 风格视觉重排 | [2026-10-25-11.md](2026-10-25-11.md) |
