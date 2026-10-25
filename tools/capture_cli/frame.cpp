@@ -675,6 +675,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
     std::unique_ptr<FrameReader> camera_reader;
     std::unique_ptr<D2DFrameCompositor> compositor;
     std::unordered_map<std::string, winrt::com_ptr<ID3D11Texture2D>> sticker_textures;
+    std::string initialization_error;
     if (overlay) {
         try {
             project = load_project(normalized);
@@ -718,7 +719,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                 }
             }
         } catch (const std::exception& error) {
-            std::cerr << "D2D preview initialization failed; using source frames: " << error.what() << '\n';
+            initialization_error = error.what();
             compositor.reset();
         }
     }
@@ -842,7 +843,8 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
                 {"spotlight", scene_has_spotlight}, {"stickers", scene_has_stickers},
-                {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening}, {"compositionError", composition_error},
+                {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening},
+                {"compositionError", composition_error.empty() ? initialization_error : composition_error},
                 {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}};
             if (const auto statistics = overlay->frame_statistics()) {
                 response["frameStatistics"] = json{{"presentCount", statistics->present_count},
