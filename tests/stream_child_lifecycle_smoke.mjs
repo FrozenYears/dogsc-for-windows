@@ -333,6 +333,9 @@ try {
       return status.includes("D2D scene") && status.includes("DXGI swapchain") && status.includes("vblank");
     });
   }
+  if (process.env.DOGSC_REQUIRE_ZERO_DROPS === "1" && (!previewStatus.includes("丢帧 0") || !previewStatus.includes("背压 0"))) {
+    throw new Error(`预览存在丢帧或背压：${previewStatus}`);
+  }
   if (!/帧 [1-9]\d*\/[1-9]\d*/.test(previewStatus) || !previewStatus.includes("丢帧")) {
     throw new Error(`没有取得已呈现帧统计: ${previewStatus}`);
   }
