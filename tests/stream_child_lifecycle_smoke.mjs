@@ -276,6 +276,12 @@ try {
   if (process.env.DOGSC_REQUIRE_PREVIEW_AUDIO === "1" && !previewStatusA.includes("音频")) {
     throw new Error(`工程 A 未完成音频预览加载：${previewStatusA}`);
   }
+  if (process.env.DOGSC_REQUIRE_PREVIEW_AUDIO === "1") {
+    const audioStart = await evaluateValue('document.querySelector("#project-preview-audio").currentTime');
+    await delay(400);
+    const audioState = await evaluateValue('({paused:document.querySelector("#project-preview-audio").paused,time:document.querySelector("#project-preview-audio").currentTime})');
+    if (audioState.paused || audioState.time <= audioStart) throw new Error(`预览音频没有随视频时钟推进：${JSON.stringify(audioState)}`);
+  }
   if (process.env.DOGSC_REQUIRE_CAMERA === "1" && !previewStatusA.includes("camera")) {
     throw new Error(`工程 A 未产生摄像头 scene 层: ${previewStatusA}`);
   }
