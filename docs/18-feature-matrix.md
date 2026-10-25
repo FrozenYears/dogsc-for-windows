@@ -29,8 +29,8 @@
 | Render | 模糊/spotlight/mosaic | P3 native D2D 已消费 evaluator 的 blur/spotlight 区域、强度与转场；spotlight GUI smoke 通过；mosaic 编辑 UI 与逐像素基准仍未完成 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜、像素对拍 |
 | Render | 贴图/层级/动画 | P3 preview/export 已接入安全相对路径 WIC PNG→D3D11 texture、sticker layer、透明度/圆角/阴影/动画求值；GUI sticker smoke 通过；素材导入 UI、更多格式与逐像素基准未完成 | compositor + WIC assets + Tauri/export | 两仓库 sticker UI | 素材路径安全、层级/出入场、导出复用 |
 | Render | 屏幕 3D/开场 | opening evaluator、screen-frame scene、screen/cursor motion 与 opening preset/duration editor controls 已接入并通过 GUI smoke；screen 3D 透视控件、导出路径与动画像素基准未完成 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界、UI 控件 |
-| Export | SourceReader 时间线合成 | P4 partial：`TimelineMap` + `TimelineMediaPlan` 已驱动单源视频导出主屏分段/裁切输出域与摄像头辅助 placement；edited timeline 3 帧/0.1s smoke 通过；预览 stream、音频、变速边界与长时同步未完成 | export pipeline + TimelineMediaPlan | xiaoying export.js；adrian VideoExporter | 分段/变速/摄像头/音频映射、重开 |
-| Export | MP4/M4A 最终导出 | P4 prototype GUI 已验收 H.264 MP4；当前无 M4A/音频、取消和失败恢复 | MF/FFmpeg dynamic | 两仓库 export cancel | MP4/M4A 可重开、取消无半成品 |
+| Export | SourceReader 时间线合成 | P4 partial：`TimelineMap` + `TimelineMediaPlan` 已驱动单源视频导出主屏分段/裁切输出域、摄像头 placement 与 system audio placement；edited timeline 3 帧/0.1s、AAC 48k/2ch/12s smoke 通过；预览 stream、麦克风、变速边界、取消/失败恢复与长时同步未完成 | export pipeline + TimelineMediaPlan + MediaWriter | xiaoying export.js；adrian VideoExporter | 分段/变速/摄像头/音频映射、重开 |
+| Export | MP4/M4A 最终导出 | P4 partial：H.264 MP4 prototype 已含 AAC system audio 轨；当前无独立 M4A、麦克风、多轨音频、取消和失败恢复 | MF/FFmpeg dynamic | 两仓库 export cancel | MP4/M4A 可重开、取消无半成品 |
 | Export | 进度/取消/重试 | 未实现 | Tauri orchestration | adrian export dialog | 取消后可重试 |
 | Shell | Tauri 录制壳 | 已验收 | `apps/tauri` | xiaoying Electron UI 仅作交互参照 | 安装包真实 GUI |
 | Shell | 中文基础界面 | 已实现部分 | Tauri | 两仓库布局/检查器 | UI smoke |

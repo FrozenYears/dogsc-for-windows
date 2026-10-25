@@ -406,6 +406,63 @@ private:
     winrt::com_ptr<IWICImagingFactory> wic_factory_;
 };
 
+class AudioReader {
+public:
+    explicit AudioReader(const std::filesystem::path& media) {
+        winrt::com_ptr<IMFSourceReader> reader;
+        winrt::check_hresult(MFCreateSourceReaderFromURL(media.wstring().c_str(), nullptr, reader.put()));
+        winrt::com_ptr<IMFMediaType> type;
+        winrt::check_hresult(MFCreateMediaType(type.put()));
+        winrt::check_hresult(type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio));
+        winrt::check_hresult(type->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float));
+        winrt::check_hresult(type->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, kSampleRate));
+        winrt::check_hresult(type->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, kChannels));
+        winrt::check_hresult(type->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, kBitsPerSample));
+        winrt::check_hresult(reader->SetCurrentMediaType(
+            static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM), nullptr, type.get()));
+        for (;;) {
+            DWORD stream = 0, flags = 0;
+            LONGLONG timestamp = 0;
+            winrt::com_ptr<IMFSample> sample;
+            winrt::check_hresult(reader->ReadSample(
+                static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM), 0,
+                &stream, &flags, &timestamp, sample.put()));
+            if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
+            if (!sample) continue;
+            winrt::com_ptr<IMFMediaBuffer> buffer;
+            winrt::check_hresult(sample->ConvertToContiguousBuffer(buffer.put()));
+            BYTE* data = nullptr;
+            DWORD max_length = 0, current_length = 0;
+            winrt::check_hresult(buffer->Lock(&data, &max_length, &current_length));
+            if (!has_timestamp_) {
+                first_timestamp_ = timestamp;
+                has_timestamp_ = true;
+            }
+            bytes_.insert(bytes_.end(), data, data + current_length);
+            buffer->Unlock();
+        }
+        if (bytes_.size() % kBlockAlignment != 0) {
+            throw std::runtime_error("音频 PCM 缓冲区不是完整帧");
+        }
+    }
+
+    static constexpr std::uint32_t kSampleRate = 48000;
+    static constexpr std::uint16_t kChannels = 2;
+    static constexpr std::uint16_t kBitsPerSample = 32;
+    static constexpr std::uint32_t kBlockAlignment = kChannels * sizeof(float);
+
+    [[nodiscard]] const std::vector<std::uint8_t>& bytes() const { return bytes_; }
+    [[nodiscard]] std::uint32_t frames() const {
+        return static_cast<std::uint32_t>(bytes_.size() / kBlockAlignment);
+    }
+    [[nodiscard]] std::int64_t first_timestamp() const { return first_timestamp_; }
+
+private:
+    std::vector<std::uint8_t> bytes_;
+    std::int64_t first_timestamp_ = 0;
+    bool has_timestamp_ = false;
+};
+
 json frame_json(FrameReader& reader, double seconds, std::uint32_t max_width, bool sequential = false) {
     if (!std::isfinite(seconds) || seconds < 0) throw std::invalid_argument("预览时间必须是非负有限数字");
     std::uint32_t width = 0, height = 0;
@@ -611,12 +668,45 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
         const auto placement = MediaTimelinePlacement::make(reference, 0, available_duration, duration);
         camera_plan = TimelineMediaPlan::from_auxiliary(timeline, placement, reference.sync_anchors);
     }
+    std::unique_ptr<AudioReader> system_audio_reader;
+    if (project.capture.records_system_audio) {
+        try {
+            system_audio_reader = std::make_unique<AudioReader>(media_path(project_path));
+        } catch (const std::exception& error) {
+            std::cerr << "System audio stream unavailable; exporting video without audio: "
+                      << error.what() << '\n';
+        }
+    }
     capture::WriterOptions options;
     options.path = output.wstring(); options.width = reader.width(); options.height = reader.height();
     options.frame_rate = frame_rate; options.codec = capture::VideoCodec::h264; options.fragmented = false;
+    if (system_audio_reader) options.audio_formats.push_back({AudioReader::kSampleRate,
+        AudioReader::kChannels, AudioReader::kBitsPerSample, true, 3});
     capture::MediaWriter writer(device.get(), options);
     const auto frame_count = static_cast<std::int64_t>(std::ceil(duration * frame_rate));
     const auto frame_duration = static_cast<std::int64_t>(10000000 / frame_rate);
+    if (system_audio_reader) {
+        constexpr double kAudioScaleEpsilon = 1e-9;
+        for (const auto& slice : media_plan.slices()) {
+            if (std::abs(slice.source_time_scale - 1.0) > kAudioScaleEpsilon) {
+                throw std::runtime_error("音频映射暂不支持非 1x 播放速度");
+            }
+            const auto source_frame = static_cast<std::int64_t>(std::llround(
+                (slice.source_start - project.media->screen.source_start_time -
+                 static_cast<double>(system_audio_reader->first_timestamp()) / 10000000.0) *
+                AudioReader::kSampleRate));
+            const auto output_frames = static_cast<std::uint32_t>(std::llround(
+                slice.duration * AudioReader::kSampleRate));
+            if (source_frame < 0 || static_cast<std::uint64_t>(source_frame) + output_frames >
+                system_audio_reader->frames()) {
+                throw std::runtime_error("音频时间线超出可读取样本范围");
+            }
+            const auto* bytes = system_audio_reader->bytes().data() +
+                static_cast<std::size_t>(source_frame) * AudioReader::kBlockAlignment;
+            writer.write_audio(0, bytes, output_frames,
+                static_cast<std::int64_t>(slice.output_start * 10000000));
+        }
+    }
     for (std::int64_t index = 0; index < frame_count; ++index) {
         const auto time = static_cast<double>(index) / frame_rate;
         std::uint32_t width = 0, height = 0;
