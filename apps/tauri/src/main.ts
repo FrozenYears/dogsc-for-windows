@@ -938,7 +938,7 @@ function openSettings() {
   const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}");
   const modal = document.createElement("div");
   modal.className = "settings-modal-backdrop";
-  modal.innerHTML = `<div class="settings-modal" role="dialog" aria-label="设置"><div class="region-modal-heading"><strong>设置</strong><button type="button" class="icon-button small settings-close">×</button></div><div class="settings-modal-body"><label class="field"><span>界面语言</span><select class="settings-language"><option value="zh-CN">简体中文</option><option value="en-US">English</option></select></label><label class="field"><span>默认帧率</span><select class="settings-fps"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option></select></label><label class="field"><span>默认输出目录</span><input class="settings-directory" type="text" /></label><div class="settings-permission"><strong>运行时能力</strong><span>Windows Graphics Capture、Media Foundation、WASAPI</span><small>权限会在首次使用对应功能时由系统返回结果。</small><button type="button" class="secondary compact settings-check">检查采集能力</button><span class="settings-check-result"></span></div></div><div class="region-modal-footer"><span class="region-readout">偏好设置保存在本机</span><button type="button" class="primary settings-save">完成</button></div></div>`;
+  modal.innerHTML = `<div class="settings-modal" role="dialog" aria-label="设置"><div class="region-modal-heading"><strong>设置</strong><button type="button" class="icon-button small settings-close">×</button></div><div class="settings-modal-body"><label class="field"><span>界面语言</span><select class="settings-language"><option value="zh-CN">简体中文</option><option value="en-US">English</option></select></label><label class="field"><span>默认帧率</span><select class="settings-fps"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option></select></label><label class="field"><span>默认输出目录</span><input class="settings-directory" type="text" /></label><div class="settings-permission"><strong>运行时能力</strong><span>Windows Graphics Capture、Media Foundation、WASAPI</span><small>权限会在首次使用对应功能时由系统返回结果。</small><button type="button" class="secondary compact settings-check">检查采集能力</button><button type="button" class="secondary compact settings-open-permissions">打开 Windows 隐私设置</button><span class="settings-check-result"></span></div></div><div class="region-modal-footer"><span class="region-readout">偏好设置保存在本机</span><button type="button" class="primary settings-save">完成</button></div></div>`;
   document.body.append(modal);
   const languageInput = modal.querySelector<HTMLSelectElement>(".settings-language")!;
   const fpsInput = modal.querySelector<HTMLSelectElement>(".settings-fps")!;
@@ -957,6 +957,15 @@ function openSettings() {
       result.textContent = `可用：${targets.monitors.length} 个显示器，${targets.windows.length} 个窗口`;
     } catch (error) {
       result.textContent = `检查失败：${String(error)}`;
+    }
+  });
+  modal.querySelector(".settings-open-permissions")?.addEventListener("click", async () => {
+    const result = modal.querySelector<HTMLElement>(".settings-check-result")!;
+    try {
+      await invoke("open_windows_settings", { page: "ms-settings:privacy" });
+      result.textContent = "已打开 Windows 隐私设置";
+    } catch (error) {
+      result.textContent = `无法打开设置：${String(error)}`;
     }
   });
   modal.querySelector(".settings-save")?.addEventListener("click", () => {

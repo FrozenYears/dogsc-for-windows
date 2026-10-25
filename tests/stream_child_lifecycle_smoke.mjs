@@ -211,6 +211,8 @@ try {
     await waitFor("settings modal 打开", async () => await evaluateValue('Boolean(document.querySelector(".settings-modal"))'));
     await evaluateValue('document.querySelector(".settings-check").click(); true');
     await waitFor("settings capability 检查", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.length > 0'));
+    await evaluateValue('document.querySelector(".settings-open-permissions").click(); true');
+    await waitFor("Windows 隐私设置入口", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.includes("已打开")'));
     await evaluateValue('document.querySelector(".settings-language").value="en-US";document.querySelector(".settings-save").click(); true');
     await evaluateValue('document.querySelector("#settings-button").click(); true');
     await waitFor("language preference persisted", async () => await evaluateValue('document.querySelector(".settings-language").value === "en-US"'));

@@ -3,10 +3,28 @@
 use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WebviewWindow};
+use std::process::Command;
 
 #[tauri::command]
 fn app_version() -> &'static str {
     "0.1.0"
+}
+
+#[tauri::command]
+fn open_windows_settings(page: String) -> Result<(), String> {
+    let allowed = [
+        "ms-settings:privacy-webcam",
+        "ms-settings:privacy-microphone",
+        "ms-settings:privacy",
+    ];
+    if !allowed.contains(&page.as_str()) {
+        return Err("不支持的 Windows 设置页面".to_string());
+    }
+    Command::new("cmd")
+        .args(["/C", "start", "", &page])
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("无法打开 Windows 设置：{error}"))
 }
 
 #[tauri::command]
@@ -17,7 +35,7 @@ fn preview_host_hwnd(window: WebviewWindow) -> Result<u64, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![app_version, preview_host_hwnd])
+        .invoke_handler(tauri::generate_handler![app_version, preview_host_hwnd, open_windows_settings])
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "打开 DogSC Studio", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
