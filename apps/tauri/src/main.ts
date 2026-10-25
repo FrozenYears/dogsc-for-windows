@@ -1,5 +1,6 @@
 import { homeDir, join } from "@tauri-apps/api/path";
 import { Command } from "@tauri-apps/plugin-shell";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles.css";
 
 type CaptureChild = {
@@ -857,10 +858,25 @@ projectExport.addEventListener("click", () => { void exportProject(); });
 styleApply.addEventListener("click", () => { void applyProjectStyles(); });
 mosaicApply.addEventListener("click", () => { void applyMosaic(); });
 stickerApply.addEventListener("click", () => { void applySticker(); });
-window.addEventListener("beforeunload", (event) => {
-  if (projectCommandBusy || projectSnapshot?.session?.dirty) {
-    event.preventDefault();
-    event.returnValue = "工程仍有未保存草稿";
+let closeConfirmationInProgress = false;
+void getCurrentWindow().onCloseRequested(async (event) => {
+  if (!projectCommandBusy && !projectSnapshot?.session?.dirty) return;
+  event.preventDefault();
+  if (closeConfirmationInProgress) return;
+  if (projectCommandBusy) {
+    window.alert("工程操作仍在进行，请等待完成后再关闭。");
+    return;
+  }
+  if (!projectSnapshot?.session?.dirty) return;
+  closeConfirmationInProgress = true;
+  try {
+    if (!window.confirm("工程有未保存的修改。保存并关闭？\n选择“取消”可返回编辑器。")) return;
+    if (!(await flushProjectSave())) return;
+    await getCurrentWindow().destroy();
+  } catch (error) {
+    projectLog(`关闭前保存失败：${String(error)}`, false);
+  } finally {
+    closeConfirmationInProgress = false;
   }
 });
 void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
