@@ -81,89 +81,73 @@ const defaultDirectory = async () => join(await homeDir(), "Videos", "DogSC");
 
 app.innerHTML = `
   <main class="shell">
-    <aside class="rail">
-      <div class="mark"><span>DS</span><small>STUDIO</small></div>
-      <nav aria-label="主导航">
-        <button class="rail-item active" type="button"><span class="rail-icon">◉</span><span>录制</span></button>
-        <button id="rail-projects" class="rail-item" type="button"><span class="rail-icon">▦</span><span>项目</span></button>
-        <button class="rail-item" type="button" disabled><span class="rail-icon">◒</span><span>素材</span></button>
-      </nav>
-      <div class="rail-foot"><span class="led"></span><span>Native core</span></div>
-    </aside>
-    <section class="workspace">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">WINDOWS CAPTURE DESK <span>·</span> v0.1 native shell</p>
-          <h1>开始一段干净的录制</h1>
-        </div>
-        <div class="top-actions">
-          <span class="system-chip"><i></i> WGC ready</span>
-          <button class="icon-button" type="button" title="设置" disabled>⚙</button>
-        </div>
-      </header>
-      <div class="content-grid">
-        <section class="hero-card">
-          <div class="hero-grid"></div>
-          <div class="hero-copy">
-            <span class="section-kicker">01 / CAPTURE SOURCE</span>
-            <h2>把画面留给<br /><em>真正重要的内容</em></h2>
-            <p>窗口、显示器或局部区域。光标独立保存，后续可在编辑器中重新合成。</p>
-          </div>
-          <div class="signal"><span class="signal-dot"></span><span id="status-text">READY TO CAPTURE</span></div>
-        </section>
-        <section class="panel settings-panel">
-          <div class="panel-heading"><span class="section-kicker">02 / SESSION SETUP</span><span class="panel-index">A</span></div>
-          <label class="field"><span>输出目录</span><input id="directory" type="text" spellcheck="false" /></label>
-          <div class="field-row">
-            <label class="field"><span>显示器索引</span><select id="monitor"><option value="0">正在枚举…</option></select></label>
+    <header class="app-toolbar">
+      <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="toolbar-brand"><span class="brand-mark">DS</span><strong>DogSC</strong><span class="toolbar-separator">/</span><span id="project-title">未打开工程</span></div>
+      <div class="toolbar-center"><button class="toolbar-tab active" type="button">编辑</button><button class="toolbar-tab" type="button" disabled>录制</button></div>
+      <div class="toolbar-actions"><span class="system-chip"><i></i> Native</span><button class="icon-button" type="button" title="设置" disabled>⚙</button></div>
+    </header>
+    <div class="app-body">
+      <aside class="rail" aria-label="主导航">
+        <nav>
+          <button class="rail-item active" type="button" title="编辑"><span class="rail-icon">▣</span><span>编辑</span></button>
+          <button id="rail-projects" class="rail-item" type="button" title="项目"><span class="rail-icon">▤</span><span>项目</span></button>
+          <button class="rail-item" type="button" disabled title="素材"><span class="rail-icon">◫</span><span>素材</span></button>
+        </nav>
+        <div class="rail-foot"><span class="led"></span><span id="status-text">READY</span></div>
+      </aside>
+      <section class="workspace">
+        <section class="panel capture-panel">
+          <div class="panel-heading"><span class="section-kicker">录制设置</span><span class="panel-index">CAPTURE</span></div>
+          <div class="capture-grid">
+            <label class="field"><span>输出目录</span><input id="directory" type="text" spellcheck="false" /></label>
+            <label class="field"><span>采集源</span><select id="capture-mode"><option value="monitor">显示器</option><option value="window">窗口</option></select></label>
+            <label class="field"><span>显示器</span><select id="monitor"><option value="0">正在枚举…</option></select></label>
+            <label class="field"><span>窗口</span><select id="window-target" disabled><option value="">没有窗口</option></select></label>
             <label class="field"><span>帧率</span><select id="fps"><option>30</option><option selected>60</option><option>90</option><option>120</option></select></label>
-          </div>
-          <div class="field-row"><label class="field"><span>采集源</span><select id="capture-mode"><option value="monitor">显示器</option><option value="window">窗口</option></select></label><label class="field"><span>窗口</span><select id="window-target" disabled><option value="">没有窗口</option></select></label></div>
-          <label class="field"><span>区域（可选，x,y,width,height）</span><input id="region" type="text" spellcheck="false" placeholder="整块显示器" /></label>
-          <div class="field-row">
             <label class="field"><span>编码器</span><select id="codec"><option value="auto" selected>自动选择</option><option value="hevc">HEVC</option><option value="h264">H.264</option><option value="prores">ProRes 422</option></select></label>
+            <label class="field capture-wide"><span>区域（可选，x,y,width,height）</span><input id="region" type="text" spellcheck="false" placeholder="整块显示器" /></label>
             <label class="field"><span>时长（秒）</span><input id="duration" type="number" min="0" step="1" placeholder="手动停止" /></label>
           </div>
           <div class="toggle-row"><label><input id="system-audio" type="checkbox" checked /><span class="toggle"></span><span>系统声音</span></label><label><input id="microphone" type="checkbox" /><span class="toggle"></span><span>麦克风</span></label><label><input id="camera" type="checkbox" /><span class="toggle"></span><span>摄像头</span></label></div>
           <div class="actions"><button id="start" class="primary" type="button"><span class="record-glyph"></span>开始录制</button><button id="pause" class="secondary" type="button" disabled>暂停</button><button id="stop" class="secondary danger" type="button" disabled>停止并保存</button></div>
+          <div class="capture-status"><strong id="elapsed">00:00</strong><span id="backend">WGC + MF</span><span id="console" class="console" aria-live="polite"><span class="console-line muted">等待录制任务……</span></span></div>
         </section>
-        <section class="panel monitor-panel">
-          <div class="panel-heading"><span class="section-kicker">03 / NATIVE PIPELINE</span><span class="panel-index">B</span></div>
-          <div class="metrics"><div><strong id="elapsed">00:00</strong><span>本次时长</span></div><div><strong>90,000</strong><span>时间基</span></div><div><strong id="backend">WGC + MF</strong><span>采集后端</span></div></div>
-          <div class="console" id="console" aria-live="polite"><span class="console-line muted">等待录制任务……</span></div>
-          <p class="note">当前为 Tauri 原生壳首个切片。停止后会在输出目录生成媒体文件、指针轨和 project.json。</p>
-        </section>
-        <section class="panel editor-panel">
-          <div class="panel-heading"><span class="section-kicker">04 / PROJECT EDITOR</span><span class="panel-index">C</span></div>
-          <div class="project-library-row"><label class="field"><span>项目库目录</span><input id="library-root" type="text" spellcheck="false" placeholder="例如：D:\\Videos\\DogSC" /></label><button id="library-refresh" class="secondary" type="button">刷新项目</button></div>
-          <div id="project-library" class="project-library"><span class="timeline-empty">刷新后列出工程目录</span></div>
-          <div class="project-open-row">
-            <label class="field"><span>project.json 路径或工程目录</span><input id="project-path" type="text" spellcheck="false" placeholder="例如：D:\\Videos\\DogSC\\演示录制" /></label>
-            <button id="project-open" class="secondary" type="button">打开工程</button>
+        <section class="editor-panel">
+          <header class="editor-toolbar">
+            <div class="project-open-row"><label class="field"><span>工程</span><input id="project-path" type="text" spellcheck="false" placeholder="打开 project.json 或工程目录" /></label><button id="project-open" class="secondary" type="button">打开</button></div>
+            <div class="canvas-tools"><button class="toolbar-pill active" type="button">16:9</button><button class="toolbar-pill" type="button">裁切</button><button class="toolbar-pill" type="button">适应</button><span class="toolbar-divider"></span><span class="zoom-label">100%</span><button class="icon-button small" type="button">−</button><button class="icon-button small" type="button">+</button></div>
+            <div class="editor-toolbar-meta"><span id="project-save-state">未打开</span><input id="project-rename-name" class="rename-input" type="text" spellcheck="false" placeholder="工程名称" /><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
+          </header>
+          <div class="editor-grid">
+            <main class="canvas-column">
+              <div class="canvas-stage">
+                <div class="canvas-dots"></div>
+                <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><span class="preview-hint">播放控制在时间线</span><span id="project-preview-status">未加载预览</span></div></div>
+              </div>
+              <div class="canvas-footer"><span>画布</span><span>·</span><span id="project-duration">—</span><span>·</span><span id="project-segment-count">— 片段</span></div>
+            </main>
+            <aside class="inspector">
+              <div class="inspector-tabs"><button class="inspector-tab active" type="button">开场</button><button class="inspector-tab" type="button">画布</button><button class="inspector-tab" type="button">效果</button></div>
+              <div class="inspector-section project-library-section"><div class="inspector-heading"><strong>项目</strong><button id="library-refresh" class="icon-button small" type="button">↻</button></div><label class="field"><span>项目库目录</span><input id="library-root" type="text" spellcheck="false" placeholder="D:\\Videos\\DogSC" /></label><div id="project-library" class="project-library"><span class="timeline-empty">刷新后列出工程</span></div></div>
+              <div class="inspector-section"><div class="inspector-heading"><strong>画面</strong><button id="style-apply" class="secondary compact" type="button" disabled>应用</button></div><div class="inspector-fields"><label class="field"><span>背景</span><select id="style-background"><option>黑曜石网格</option><option>工程白网格</option><option>暗夜星阵</option><option>建筑极简点</option><option>立体等角网</option></select></label><label class="field"><span>留白</span><input id="style-padding" type="number" min="0" max="1000" step="1" value="100" /></label><label class="field"><span>样机</span><select id="style-screen-frame"><option value="none">无</option><option value="windowDark">深色窗口</option><option value="browserDark">深色浏览器</option><option value="browserLight">浅色浏览器</option><option value="devicePhonePortrait">手机竖屏</option><option value="deviceTabletLandscape">平板横屏</option></select></label><label class="field"><span>屏幕运镜</span><select id="style-screen-motion"><option value="聚焦">聚焦</option><option value="平滑">平滑</option></select></label><label class="field"><span>光标运动</span><select id="style-cursor-motion"><option value="平滑">平滑</option><option value="适中">适中</option><option value="快速">快速</option><option value="无">无</option></select></label><label class="field"><span>摄像头尺寸</span><input id="style-camera-size" type="number" min="0.05" max="1" step="0.01" value="0.29" /></label><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div></div>
+              <div class="inspector-section"><div class="inspector-heading"><strong>开场</strong></div><div class="inspector-fields"><label class="camera-hidden-toggle"><input id="style-opening-enabled" type="checkbox" /><span>开场动画</span></label><label class="field"><span>样式</span><select id="style-opening-preset"><option value="轻 3D">轻 3D</option><option value="聚拢">聚拢</option><option value="侧滑">侧滑</option></select></label><label class="field"><span>时长</span><input id="style-opening-duration" type="number" min="0.18" max="10" step="0.1" value="2.2" /></label></div></div>
+              <div class="inspector-section"><div class="inspector-heading"><strong>光标</strong></div><div class="inspector-fields"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label><label class="field"><span>尺寸</span><input id="style-cursor-size" type="number" min="0.25" max="6" step="0.05" value="1.25" /></label></div></div>
+              <div class="inspector-section"><div class="inspector-heading"><strong>遮罩</strong><button id="mosaic-apply" class="secondary compact" type="button" disabled>添加</button></div><div class="inspector-fields"><label class="field"><span>开始</span><input id="mosaic-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="mosaic-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>样式</span><select id="mosaic-style"><option value="blur">模糊</option><option value="spotlight">聚光</option></select></label><label class="field"><span>强度</span><input id="mosaic-intensity" type="number" min="0" max="1" step="0.05" value="0.55" /></label><label class="field"><span>X/Y/W/H</span><input id="mosaic-rect" type="text" value="0.35,0.39,0.30,0.22" /></label></div></div>
+              <div class="inspector-section"><div class="inspector-heading"><strong>贴图</strong><button id="sticker-apply" class="secondary compact" type="button" disabled>添加</button></div><div class="inspector-fields"><label class="field"><span>相对路径</span><input id="sticker-path" type="text" spellcheck="false" placeholder="assets/logo.png" /></label><label class="field"><span>开始</span><input id="sticker-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="sticker-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/W</span><input id="sticker-geometry" type="text" value="0.5,0.5,0.38" /></label></div></div>
+            </aside>
           </div>
-          <div class="project-rename-row"><label class="field"><span>工程名称</span><input id="project-rename-name" type="text" spellcheck="false" placeholder="新工程目录名" /></label><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
-          <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div><strong id="project-save-state">未打开</strong><span>保存状态</span></div><div class="project-history-actions"><button id="project-save" class="secondary" type="button" disabled>保存</button><button id="project-discard" class="secondary danger" type="button" disabled>放弃草稿</button><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
-          <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
-          <div class="project-export-row"><label class="field"><span>导出格式</span><select id="project-export-format"><option value="mp4">MP4 视频</option><option value="m4a">M4A 音频</option></select></label><label class="field"><span>导出路径</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary" type="button" disabled>导出</button><button id="project-export-cancel" class="secondary danger" type="button" disabled>取消导出</button></div>
-          <div class="style-row"><label class="field"><span>背景</span><select id="style-background"><option>黑曜石网格</option><option>工程白网格</option><option>暗夜星阵</option><option>建筑极简点</option><option>立体等角网</option></select></label><label class="field"><span>留白</span><input id="style-padding" type="number" min="0" max="1000" step="1" value="100" /></label><label class="field"><span>摄像头尺寸</span><input id="style-camera-size" type="number" min="0.05" max="1" step="0.01" value="0.29" /></label><label class="field"><span>光标尺寸</span><input id="style-cursor-size" type="number" min="0.25" max="6" step="0.05" value="1.25" /></label><button id="style-apply" class="secondary" type="button" disabled>应用画面参数</button></div>
-          <div class="effect-row"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>点击透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>点击缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label></div>
-          <div class="camera-row"><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div>
-          <div class="motion-row"><label class="field"><span>屏幕样机</span><select id="style-screen-frame"><option value="none">无</option><option value="windowDark">深色窗口</option><option value="browserDark">深色浏览器</option><option value="browserLight">浅色浏览器</option><option value="devicePhonePortrait">手机竖屏</option><option value="deviceTabletLandscape">平板横屏</option></select></label><label class="field"><span>屏幕运镜</span><select id="style-screen-motion"><option value="聚焦">聚焦</option><option value="平滑">平滑</option></select></label><label class="field"><span>光标运动</span><select id="style-cursor-motion"><option value="平滑">平滑</option><option value="适中">适中</option><option value="快速">快速</option><option value="无">无</option></select></label></div>
-          <div class="opening-row"><label class="camera-hidden-toggle"><input id="style-opening-enabled" type="checkbox" /><span>开场动画</span></label><label class="field"><span>开场样式</span><select id="style-opening-preset"><option value="轻 3D">轻 3D</option><option value="聚拢">聚拢</option><option value="侧滑">侧滑</option></select></label><label class="field"><span>开场时长</span><input id="style-opening-duration" type="number" min="0.18" max="10" step="0.1" value="2.2" /></label></div>
-          <div class="screen-motion-row"><label class="field"><span>运镜开始</span><input id="screen-motion-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="screen-motion-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/Scale/RX/RY/RZ/P</span><input id="screen-motion-geometry" type="text" value="0.5,0.5,1.2,0,0,0,0.65" /></label><button id="screen-motion-apply" class="secondary" type="button" disabled>添加运镜</button></div>
-          <div class="mosaic-row"><label class="field"><span>遮罩开始</span><input id="mosaic-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="mosaic-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>样式</span><select id="mosaic-style"><option value="blur">模糊</option><option value="spotlight">聚光</option></select></label><label class="field"><span>强度</span><input id="mosaic-intensity" type="number" min="0" max="1" step="0.05" value="0.55" /></label><label class="field"><span>X/Y/W/H</span><input id="mosaic-rect" type="text" value="0.35,0.39,0.30,0.22" /></label><button id="mosaic-apply" class="secondary" type="button" disabled>添加遮罩</button></div>
-          <div class="sticker-row"><label class="field"><span>贴图相对路径</span><input id="sticker-path" type="text" spellcheck="false" placeholder="assets/logo.png" /></label><label class="field"><span>开始</span><input id="sticker-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="sticker-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/W</span><input id="sticker-geometry" type="text" value="0.5,0.5,0.38" /></label><button id="sticker-apply" class="secondary" type="button" disabled>添加贴图</button></div>
-          <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
-          <div class="editor-controls">
-            <label class="field"><span>时间点（秒）</span><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /></label>
-            <label class="field"><span>当前片段</span><select id="edit-segment"><option value="">未选择</option></select></label>
-            <label class="field"><span>速度</span><input id="edit-rate" type="number" min="1" max="100" step="0.1" value="1" /></label>
-            <div class="editor-actions"><button id="edit-split" class="secondary" type="button" disabled>在时间点分割</button><button id="edit-trim-left" class="secondary" type="button" disabled>左裁切</button><button id="edit-trim-right" class="secondary" type="button" disabled>右裁切</button><button id="edit-rate-button" class="secondary" type="button" disabled>应用速度</button><button id="edit-move-up" class="secondary" type="button" disabled>片段上移</button><button id="edit-move-down" class="secondary" type="button" disabled>片段下移</button><button id="edit-remove" class="secondary danger" type="button" disabled>删除片段</button></div>
-          </div>
-          <div id="project-console" class="project-console" aria-live="polite"><span class="console-line muted">等待打开工程……</span></div>
+          <section class="timeline-panel">
+            <div class="timeline-controls"><button class="icon-button small" type="button">◀</button><button id="project-preview-play" class="play-button" type="button" disabled>▶</button><button class="icon-button small" type="button">▶</button><span class="timecode"><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /> / <span class="timeline-duration">—</span></span><span class="timeline-spacer"></span><label class="field timeline-format"><span>格式</span><select id="project-export-format"><option value="mp4">MP4 视频</option><option value="m4a">M4A 音频</option></select></label><label class="field timeline-path"><span>导出</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary compact" type="button" disabled>导出</button><button id="project-export-cancel" class="secondary danger compact" type="button" disabled>取消</button></div>
+            <div class="timeline-ruler"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:30</span><span>0:35</span><span>0:40</span><span>0:45</span><span>0:50</span><span>0:55</span><span>1:00</span></div>
+            <div class="timeline-head"><strong>时间线</strong><span class="timeline-save-label">保存状态在窗口顶部</span><div class="project-history-actions"><button id="project-save" class="secondary compact" type="button" disabled>保存</button><button id="project-discard" class="secondary danger compact" type="button" disabled>放弃</button><button id="project-undo" class="secondary compact" type="button" disabled>撤销</button><button id="project-redo" class="secondary compact" type="button" disabled>重做</button></div></div>
+            <div id="timeline" class="timeline"><span class="timeline-empty">打开工程后开始编辑</span></div>
+            <div class="timeline-edit-row"><label class="field"><span>当前片段</span><select id="edit-segment"><option value="">未选择</option></select></label><label class="field"><span>速度</span><input id="edit-rate" type="number" min="1" max="100" step="0.1" value="1" /></label><div class="editor-actions"><button id="edit-split" class="secondary compact" type="button" disabled>分割</button><button id="edit-trim-left" class="secondary compact" type="button" disabled>左裁切</button><button id="edit-trim-right" class="secondary compact" type="button" disabled>右裁切</button><button id="edit-rate-button" class="secondary compact" type="button" disabled>应用速度</button><button id="edit-move-up" class="secondary compact" type="button" disabled>上移</button><button id="edit-move-down" class="secondary compact" type="button" disabled>下移</button><button id="edit-remove" class="secondary danger compact" type="button" disabled>删除</button></div></div>
+            <div class="timeline-actions"><label class="field"><span>运镜</span><input id="screen-motion-start" type="hidden" value="0" /><input id="screen-motion-duration" type="hidden" value="1" /><input id="screen-motion-geometry" type="hidden" value="0.5,0.5,1.2,0,0,0,0.65" /></label><button id="screen-motion-apply" class="secondary compact" type="button" disabled>添加运镜</button><span id="project-console" class="project-console" aria-live="polite"><span class="console-line muted">等待打开工程……</span></span></div>
+          </section>
         </section>
-      </div>
-    </section>
+      </section>
+    </div>
   </main>
 `;
 
@@ -839,7 +823,7 @@ function renderProjectSnapshot() {
 function updateEditorButtons() {
   const snapshot = projectSnapshot;
   const segments = snapshot?.segments ?? [];
-  const hasProject = snapshot !== null && projectFile.length > 0;
+  const hasProject = snapshot !== null;
   const index = hasProject ? segments.findIndex((segment) => segment.id === editSegment.value) : -1;
   const hasSegment = index >= 0;
   editSplit.disabled = !hasProject;
@@ -1015,7 +999,9 @@ async function loadProject(value: string) {
   } finally {
     projectCommandBusy = false;
     projectOpen.disabled = false;
-    updateEditorButtons();
+    projectPreviewFrame.disabled = false;
+    projectPreviewPlay.disabled = false;
+    projectPathInput.value = path;
   }
 }
 
@@ -1179,7 +1165,7 @@ editRemove.addEventListener("click", () => { void applyProjectEdit("remove", edi
 projectRenameName.addEventListener("input", updateEditorButtons);
 projectRename.addEventListener("click", () => { void renameProject(); });
 projectPreviewFrame.addEventListener("click", () => { void loadPreviewFrame(); });
-projectPreviewPlay.addEventListener("click", () => { void togglePreviewPlay(); });
+projectPreviewPlay.addEventListener("click", () => { projectPreviewStatus.textContent = "正在启动预览…"; void togglePreviewPlay(); });
 const previewOverlayResizeObserver = new ResizeObserver(schedulePreviewOverlayBounds);
 previewOverlayResizeObserver.observe(projectPreviewImage);
 window.addEventListener("scroll", schedulePreviewOverlayBounds, true);

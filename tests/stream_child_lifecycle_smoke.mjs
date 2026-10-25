@@ -170,11 +170,16 @@ public static class DogscSmokeWindow {
 }
 
 async function waitForStream(path, present) {
-  await waitFor(`${present ? "启动" : "退出"} ${path} 的 stream child`, async () => {
-    const processes = await streamProcesses();
-    const found = processes.some((item) => item.CommandLine.toLowerCase().includes(path.toLowerCase()));
-    return present ? found : !found;
-  });
+  try {
+    await waitFor(`${present ? "启动" : "退出"} ${path} 的 stream child`, async () => {
+      const processes = await streamProcesses();
+      const found = processes.some((item) => item.CommandLine.toLowerCase().includes(path.toLowerCase()));
+      return present ? found : !found;
+    });
+  } catch (error) {
+    const status = await evaluateValue('document.querySelector("#project-preview-status").textContent');
+    throw new Error(`${String(error)}；previewStatus=${status}`);
+  }
 }
 
 try {
@@ -226,6 +231,11 @@ try {
     if (ready) previewStatusA = status;
     return ready;
   });
+  if (process.env.DOGSC_SCREENSHOT) {
+    await send("Page.enable");
+    const screenshot = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(process.env.DOGSC_SCREENSHOT, Buffer.from(screenshot.result.data, "base64"));
+  }
   if (!previewStatusA) previewStatusA = await evaluateValue('document.querySelector("#project-preview-status").textContent');
   if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
       (!previewStatusA.includes("DXGI swapchain") || !previewStatusA.includes("D2D scene") || !previewStatusA.includes("vblank") ||
