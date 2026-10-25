@@ -85,7 +85,7 @@ app.innerHTML = `
       <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="toolbar-brand"><span class="brand-mark">DS</span><strong>DogSC</strong><span class="toolbar-separator">/</span><span id="project-title">未打开工程</span></div>
       <div class="toolbar-center"><button class="toolbar-tab active" type="button">编辑</button><button class="toolbar-tab" type="button" disabled>录制</button></div>
-      <div class="toolbar-actions"><span class="system-chip"><i></i> Native</span><button class="icon-button" type="button" title="设置" disabled>⚙</button></div>
+      <div class="toolbar-actions"><span class="system-chip"><i></i> Native</span><button id="settings-button" class="icon-button" type="button" title="设置">⚙</button></div>
     </header>
     <div class="app-body">
       <aside class="rail" aria-label="主导航">
@@ -206,6 +206,7 @@ const projectExportPath = $("project-export-path") as HTMLInputElement;
 const projectExportFormat = $("project-export-format") as HTMLSelectElement;
 const projectExportCancel = $("project-export-cancel") as HTMLButtonElement;
 const projectExport = $("project-export") as HTMLButtonElement;
+const settingsButton = $("settings-button") as HTMLButtonElement;
 const styleBackground = $("style-background") as HTMLSelectElement;
 const stylePadding = $("style-padding") as HTMLInputElement;
 const styleCameraSize = $("style-camera-size") as HTMLInputElement;
@@ -911,6 +912,28 @@ function openRegionPicker() {
   modal.querySelector(".region-apply")?.addEventListener("click", () => { region.value = `${Math.round(rect.x * sourceWidth)},${Math.round(rect.y * sourceHeight)},${Math.round(rect.width * sourceWidth)},${Math.round(rect.height * sourceHeight)}`; close(); });
 }
 
+function openSettings() {
+  if (document.querySelector(".settings-modal-backdrop")) return;
+  const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}");
+  const modal = document.createElement("div");
+  modal.className = "settings-modal-backdrop";
+  modal.innerHTML = `<div class="settings-modal" role="dialog" aria-label="设置"><div class="region-modal-heading"><strong>设置</strong><button type="button" class="icon-button small settings-close">×</button></div><div class="settings-modal-body"><label class="field"><span>默认帧率</span><select class="settings-fps"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option></select></label><label class="field"><span>默认输出目录</span><input class="settings-directory" type="text" /></label><div class="settings-permission"><strong>运行时能力</strong><span>Windows Graphics Capture、Media Foundation、WASAPI</span><small>权限会在首次使用对应功能时由系统返回结果。</small></div></div><div class="region-modal-footer"><span class="region-readout">偏好设置保存在本机</span><button type="button" class="primary settings-save">完成</button></div></div>`;
+  document.body.append(modal);
+  const fpsInput = modal.querySelector<HTMLSelectElement>(".settings-fps")!;
+  const directoryInput = modal.querySelector<HTMLInputElement>(".settings-directory")!;
+  fpsInput.value = String(saved.defaultFps ?? fps.value);
+  directoryInput.value = String(saved.directory ?? directory.value);
+  const close = () => modal.remove();
+  modal.querySelector(".settings-close")?.addEventListener("click", close);
+  modal.querySelector(".settings-save")?.addEventListener("click", () => {
+    const preferences = { defaultFps: Number(fpsInput.value), directory: directoryInput.value.trim() };
+    localStorage.setItem("dogsc.preferences", JSON.stringify(preferences));
+    fps.value = String(preferences.defaultFps);
+    if (preferences.directory) { directory.value = preferences.directory; libraryRoot.value = preferences.directory; }
+    close();
+  });
+}
+
 
 async function refreshTargets() {
   try {
@@ -1233,9 +1256,10 @@ void getCurrentWindow().onCloseRequested(async (event) => {
     closeConfirmationInProgress = false;
   }
 });
-void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
+void defaultDirectory().then((value) => { const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}"); directory.value = saved.directory ?? value; libraryRoot.value = saved.directory ?? value; if (saved.defaultFps) fps.value = String(saved.defaultFps); });
 captureMode.addEventListener("change", updateCaptureMode);
 regionPick.addEventListener("click", openRegionPicker);
+settingsButton.addEventListener("click", openSettings);
 updateCaptureMode();
 void refreshTargets();
 

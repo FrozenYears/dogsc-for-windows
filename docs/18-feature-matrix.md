@@ -35,7 +35,7 @@
 | Shell | Tauri 录制壳 | 已验收 | `apps/tauri` | xiaoying Electron UI 仅作交互参照 | 安装包真实 GUI |
 | Shell | 中文基础界面 | 已实现部分 | Tauri | 两仓库布局/检查器 | UI smoke |
 | Shell | 英文/本地化切换 | 未实现 | localization | xiaoying localization | 运行时切换 |
-| Shell | 设置/权限/托盘/备忘录 | P5 partial：Tauri 启动真实枚举显示器/窗口，支持显示器/窗口源切换和区域参数透传；拖拽区域、权限向导、托盘/备忘录未完成 | Tauri/Win32 | adrian dialogs/memo | 权限失败、托盘、保存 |
+| Shell | 设置/权限/托盘/备忘录 | P5 partial：显示器/窗口枚举、源切换、区域参数与 WebView region picker、macOS 风格 settings modal 已接入；权限向导、原生托盘、备忘录浮窗、DPI/多显示器 picker 仍未完成 | Tauri/Win32 | adrian dialogs/memo | 权限失败、托盘、设置持久化、多显示器区域 |
 | Release | FFmpeg 动态 LGPL | 当前配置部分满足 | CMake/vcpkg/package | 不复制 adrian GPL 包 | DLL、源码、补丁、NOTICE 审计 |
 | Release | 长时/跨硬件 | 未完成 | capture/export | 两仓库测试矩阵思路 | 4K60、混合显卡、休眠恢复 |
 
