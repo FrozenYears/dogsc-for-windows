@@ -586,12 +586,18 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     {"mime", "image/png"}, {"data", "data:image/png;base64," + base64(png)}}.dump() << '\n' << std::flush;
                 continue;
             }
-            std::cout << json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
+            auto response = json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
-                {"composed", composed},
-                {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}}.dump()
-                << '\n' << std::flush;
+                {"composed", composed}, {"presentedFrames", overlay->presented_frames()},
+                {"droppedFrames", overlay->dropped_frames()}};
+            if (const auto statistics = overlay->frame_statistics()) {
+                response["frameStatistics"] = json{{"presentCount", statistics->present_count},
+                    {"presentRefreshCount", statistics->present_refresh_count},
+                    {"syncRefreshCount", statistics->sync_refresh_count},
+                    {"syncQpcTime", statistics->sync_qpc_time}};
+            }
+            std::cout << response.dump() << '\n' << std::flush;
         } catch (const std::exception& error) {
             std::cout << json{{"error", error.what()}}.dump() << '\n' << std::flush;
         }

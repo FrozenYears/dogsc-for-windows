@@ -3,6 +3,7 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <windows.h>
+#include <dwmapi.h>
 #include <winrt/base.h>
 
 #include <cstdio>
@@ -204,6 +205,14 @@ ID3D11Device* DxgiPreviewOverlay::device() const { return impl_->device.get(); }
 ID3D11DeviceContext* DxgiPreviewOverlay::context() const { return impl_->context.get(); }
 bool DxgiPreviewOverlay::present_texture(ID3D11Texture2D* texture) {
     return impl_->present_texture(texture);
+}
+std::optional<DxgiPreviewOverlay::FrameStatistics> DxgiPreviewOverlay::frame_statistics() const {
+    if (!impl_->swapchain || impl_->presented == 0) return std::nullopt;
+    DwmFlush();
+    DXGI_FRAME_STATISTICS statistics{};
+    if (FAILED(impl_->swapchain->GetFrameStatistics(&statistics))) return std::nullopt;
+    return FrameStatistics{statistics.PresentCount, statistics.PresentRefreshCount,
+        statistics.SyncRefreshCount, statistics.SyncQPCTime.QuadPart};
 }
 std::uint64_t DxgiPreviewOverlay::presented_frames() const { return impl_->presented; }
 std::uint64_t DxgiPreviewOverlay::dropped_frames() const { return impl_->dropped; }

@@ -96,6 +96,21 @@ async function streamProcesses() {
   const value = JSON.parse(output);
   return Array.isArray(value) ? value : [value];
 }
+function windowCommand(action) {
+  const script = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class DogscSmokeWindow {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int width, int height, bool repaint);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+}
+'@; $h=(Get-Process -Id ${app.pid}).MainWindowHandle; if ($h -eq 0) { throw '找不到 Tauri 主窗口' }; $r=New-Object DogscSmokeWindow+RECT; [DogscSmokeWindow]::GetWindowRect($h,[ref]$r) | Out-Null; switch ('${action}') { 'move-resize' { [DogscSmokeWindow]::MoveWindow($h,$r.Left+16,$r.Top+16,[Math]::Max(640,$r.Right-$r.Left+32),[Math]::Max(480,$r.Bottom-$r.Top+24),$true) | Out-Null }; 'minimize' { [DogscSmokeWindow]::ShowWindow($h,6) | Out-Null }; 'restore' { [DogscSmokeWindow]::ShowWindow($h,9) | Out-Null } }; [DogscSmokeWindow]::GetWindowRect($h,[ref]$r) | Out-Null; [pscustomobject]@{left=$r.Left;top=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top} | ConvertTo-Json -Compress`;
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-InputFormat", "None", "-EncodedCommand", encoded], { encoding: "utf8", timeout: 10000 }).trim();
+  return JSON.parse(output);
+}
 
 async function waitForStream(path, present) {
   await waitFor(`${present ? "启动" : "退出"} ${path} 的 stream child`, async () => {
@@ -141,9 +156,25 @@ try {
   });
   const previewStatusA = await evaluateValue('document.querySelector("#project-preview-status").textContent');
   if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
-      (!previewStatusA.includes("DXGI swapchain") || !previewStatusA.includes("D2D scene") ||
+      (!previewStatusA.includes("DXGI swapchain") || !previewStatusA.includes("D2D scene") || !previewStatusA.includes("vblank") ||
        await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
-    throw new Error(`工程 A 未进入原生 D2D/DXGI presentation: ${previewStatusA}`);
+    throw new Error(`工程 A 未进入原生 D2D/DXGI presentation 或缺少 frame statistics: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_EXERCISE_WINDOW === "1") {
+    const beforeWindow = windowCommand("get");
+    const resizedWindow = windowCommand("move-resize");
+    if (resizedWindow.width <= beforeWindow.width || resizedWindow.height <= beforeWindow.height) {
+      throw new Error(`窗口 move/resize 未生效: before=${JSON.stringify(beforeWindow)}, after=${JSON.stringify(resizedWindow)}`);
+    }
+    await delay(700);
+    await evaluateValue('window.scrollTo(0, document.body.scrollHeight); true');
+    await delay(500);
+    await revealPreview();
+    await evaluateValue('document.querySelector("#project-preview-play").click(); true');
+    await waitFor("滚动恢复并重新呈现 DXGI scene", async () => {
+      const status = await evaluateValue('document.querySelector("#project-preview-status").textContent');
+      return status.includes("D2D scene") && status.includes("DXGI swapchain") && status.includes("vblank");
+    });
   }
 
   await openProject(projectB, titleB);
@@ -154,9 +185,25 @@ try {
   await waitFor("工程 B 的帧呈现统计", async () => await evaluateValue('document.querySelector("#project-preview-status").textContent.includes("背压")'));
   const previewStatus = await evaluateValue('document.querySelector("#project-preview-status").textContent');
   if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
-      (!previewStatus.includes("DXGI swapchain") || !previewStatus.includes("D2D scene") ||
+      (!previewStatus.includes("DXGI swapchain") || !previewStatus.includes("D2D scene") || !previewStatus.includes("vblank") ||
        await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
-    throw new Error(`工程 B 未进入原生 D2D/DXGI presentation: ${previewStatus}`);
+    throw new Error(`工程 B 未进入原生 D2D/DXGI presentation 或缺少 frame statistics: ${previewStatus}`);
+  }
+  if (process.env.DOGSC_EXERCISE_WINDOW === "1") {
+    const beforeWindow = windowCommand("get");
+    const resizedWindow = windowCommand("move-resize");
+    if (resizedWindow.width <= beforeWindow.width || resizedWindow.height <= beforeWindow.height) {
+      throw new Error(`工程 B 窗口 move/resize 未生效: before=${JSON.stringify(beforeWindow)}, after=${JSON.stringify(resizedWindow)}`);
+    }
+    await delay(700);
+    await evaluateValue('window.scrollTo(0, document.body.scrollHeight); true');
+    await delay(500);
+    await revealPreview();
+    await evaluateValue('document.querySelector("#project-preview-play").click(); true');
+    await waitFor("工程 B 滚动恢复并重新呈现 DXGI scene", async () => {
+      const status = await evaluateValue('document.querySelector("#project-preview-status").textContent');
+      return status.includes("D2D scene") && status.includes("DXGI swapchain") && status.includes("vblank");
+    });
   }
   if (!/帧 [1-9]\d*\/[1-9]\d*/.test(previewStatus) || !previewStatus.includes("丢帧")) {
     throw new Error(`没有取得已呈现帧统计: ${previewStatus}`);
