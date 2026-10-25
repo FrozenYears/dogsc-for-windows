@@ -21,7 +21,7 @@
 | Timeline | 撤销/重做 | P1a GUI 已验收多步 history；关闭恢复未完成 | editor store + project history | 两仓库 command/history | 多步编辑 undo/redo |
 | Timeline | 自动运镜/缩放 | core 求值已存在，UI/预览未接入 | frame tracks + inspector | 两仓库 auto-zoom | 点击分组、spring、剪切桥接 |
 | Preview | 媒体解码 | P2a 部分已验收：MF SourceReader 首帧、0.1s seek、EOF 明确错误，H.264/HEVC 320×200 CLI smoke；P2b 增加 SourceReader→FrameSceneEvaluator→D2D/WARP 单帧合成并通过 GUI 0s；损坏媒体/音画同步/连续播放未完成 | `tools/capture_cli/frame.cpp` + D2D + Tauri | xiaoying frame source | 首帧、seek、EOF、坏帧 |
-| Preview | 实时播放/拖动 | P2b partial：SourceReader NV12 + D3D11 device manager 实际取得 H.264/HEVC `IMFDXGIBuffer` surface；仍 staging readback→CPU YUV→lossless PNG→WebView；单飞 image.decode/2 RAF ack、PTS 顺序读取和 FPS/丢帧/背压统计已接入；当前 GUI 12–20fps、丢帧0，未达60Hz；direct swapchain presentation、无撕裂和 timeline seek/暂停语义未验收 | D3D11/DXGI + playback clock | 两仓库 preview/transport | GPU surface path、60Hz、掉帧<2%、child 回收、无撕裂 |
+| Preview | 实时播放/拖动 | P2b partial：sidecar-owned WS_POPUP + DXGI flip-model swapchain/`Present(1,0)` 覆盖 WebView 预览图，bounds 由 Tauri DOM/physical scale 驱动；DXGI mode 不经 PNG/image decode。SourceReader NV12 decoder surface 仍 staging→CPU YUV→BGRA upload；单飞请求/呈现 FPS/丢帧/背压统计已接入；短 H.264/HEVC GUI smoke 为 72–86 FPS（最新 81/72）、drop=0；长时60Hz、无撕裂、驱动帧队列与完整 timeline seek/暂停未验收 | D3D11/DXGI + playback clock | 两仓库 preview/transport | DXGI Present、长时60Hz、丢帧<2%、跨窗口/设备、无撕裂 |
 | Render | D2D/WARP 六层离屏 | 已实现，像素基准未完成 | `render/d2d` | 两仓库效果组织 | WARP 读回、PSNR 基准 |
 | Render | 光标/点击效果 | P3a 已接入 cursor size、click style/opacity/scale 控件并持久化；实际光标/点击帧合成仍部分 | cursor renderer | xiaoying cursors | 光标位置/热点/点击波纹 |
 | Render | 摄像头布局 | core/D2D 有部分 | compositor + inspector | adrian camera panel | 形状/镜像/阴影/缩放 |

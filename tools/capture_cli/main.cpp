@@ -37,6 +37,7 @@ void usage() {
         "  dogsc_capture project composite-frame <project.json|project-directory> <seconds> [max-width]\n"
         "  dogsc_capture project export-video <project.json|project-directory> <output.mp4> <fps>\n"
         "  dogsc_capture project stream <project.json|project-directory> [max-width]\n"
+        "  dogsc_capture project stream-window <project.json|project-directory> <max-width> <owner-hwnd>\n"
         "  dogsc_capture project edit <project.json|project-directory> split <output-time>\n"
         "  dogsc_capture project edit <project.json|project-directory> trim <segment-id> <left|right> <output-time>\n"
         "  dogsc_capture project edit <project.json|project-directory> remove <segment-id>\n"
@@ -86,6 +87,18 @@ int wmain(int argc, wchar_t** argv) {
             const auto frame_rate = integer(argv[5]);
             if (frame_rate == 0 || frame_rate > 120) throw std::invalid_argument("导出帧率必须在 1..120 之间");
             return dogsc::cli::project_export_video_command(argv[3], argv[4], static_cast<int>(frame_rate));
+        }
+        if (command == L"project" && argc == 6 && std::wstring_view(argv[2]) == L"stream-window") {
+            const auto requested_width = integer(argv[4]);
+            const auto owner = integer(argv[5]);
+            if (requested_width == 0 || requested_width > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::invalid_argument("预览宽度必须在 1..4294967295 之间");
+            }
+            if (owner == 0 || owner > std::numeric_limits<std::uintptr_t>::max()) {
+                throw std::invalid_argument("DXGI overlay owner HWND 无效");
+            }
+            return dogsc::cli::project_frame_stream_command(argv[3],
+                static_cast<std::uint32_t>(requested_width), static_cast<std::uintptr_t>(owner));
         }
         if (command == L"project" && argc >= 4 && std::wstring_view(argv[2]) == L"stream" && argc <= 5) {
             const auto requested_width = argc == 5 ? integer(argv[4]) : 960;

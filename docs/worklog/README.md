@@ -23,4 +23,4 @@
 | 17 | 2026-10-25 | P1b 原生关闭请求拦截 | [2026-10-25-05.md](2026-10-25-05.md) |
 | 18 | 2026-10-25 | P2b 跨工程 stream child 生命周期回归 | [2026-10-25-06.md](2026-10-25-06.md) |
 | 19 | 2026-10-25 | P1b dirty state 与关闭事务闭环 | [2026-10-25-07.md](2026-10-25-07.md) |
-| 20 | 2026-10-25 | P2b DXGI decode surface 与 bounded preview | [2026-10-25-08.md](2026-10-25-08.md) |
+| 20 | 2026-10-25 | P2b DXGI decoder surface、bounded preview 与 native swapchain overlay | [2026-10-25-08.md](2026-10-25-08.md) |

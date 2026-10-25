@@ -82,6 +82,11 @@ async function openProject(path, title) {
   await waitFor(`工程打开: ${title}`, async () => await evaluateValue(
     `document.querySelector("#project-title").textContent === ${JSON.stringify(title)}`));
 }
+async function revealPreview() {
+  await evaluateValue('document.querySelector("#project-preview-image").scrollIntoView({block:"center",inline:"center"}); true');
+  await waitFor("preview image 在窗口内可见", async () => await evaluateValue(
+    '(()=>{const r=document.querySelector("#project-preview-image").getBoundingClientRect();return r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight})()'));
+}
 
 async function streamProcesses() {
   const script = "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -like '*dogsc_capture*project*stream*' } | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
@@ -126,6 +131,7 @@ try {
   await waitFor("Tauri 工程控件就绪", async () => await evaluateValue('Boolean(document.querySelector("#project-path") && document.querySelector("#project-preview-play"))'));
 
   await openProject(projectA, titleA);
+  await revealPreview();
   await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
   await waitForStream(projectA, true);
   await waitFor("工程 A 的帧呈现统计", async () => {
@@ -134,18 +140,21 @@ try {
     return status.includes("丢帧");
   });
   const previewStatusA = await evaluateValue('document.querySelector("#project-preview-status").textContent');
-  if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" && !previewStatusA.includes("DXGI surface")) {
-    throw new Error(`工程 A 未使用 DXGI decoder surface: ${previewStatusA}`);
+  if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
+      (!previewStatusA.includes("DXGI swapchain") || await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
+    throw new Error(`工程 A 未进入原生 DXGI swapchain presentation: ${previewStatusA}`);
   }
 
   await openProject(projectB, titleB);
   await waitForStream(projectA, false);
+  await revealPreview();
   await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
   await waitForStream(projectB, true);
   await waitFor("工程 B 的帧呈现统计", async () => await evaluateValue('document.querySelector("#project-preview-status").textContent.includes("背压")'));
   const previewStatus = await evaluateValue('document.querySelector("#project-preview-status").textContent');
-  if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" && !previewStatus.includes("DXGI surface")) {
-    throw new Error(`当前设备要求 DXGI decoder surface，但收到: ${previewStatus}`);
+  if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
+      (!previewStatus.includes("DXGI swapchain") || await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
+    throw new Error(`工程 B 未进入原生 DXGI swapchain presentation: ${previewStatus}`);
   }
   if (!/帧 [1-9]\d*\/[1-9]\d*/.test(previewStatus) || !previewStatus.includes("丢帧")) {
     throw new Error(`没有取得已呈现帧统计: ${previewStatus}`);

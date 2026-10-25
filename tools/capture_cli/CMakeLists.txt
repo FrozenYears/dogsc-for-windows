@@ -1,3 +1,3 @@
-add_executable(dogsc_capture_cli frame.cpp main.cpp probe.cpp project.cpp record.cpp)
+add_executable(dogsc_capture_cli dxgi_preview_overlay.cpp frame.cpp main.cpp probe.cpp project.cpp record.cpp)
 set_target_properties(dogsc_capture_cli PROPERTIES OUTPUT_NAME dogsc_capture)
 target_link_libraries(dogsc_capture_cli PRIVATE dogsc_capture dogsc_render_d2d windowscodecs)

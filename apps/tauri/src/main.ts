@@ -1,6 +1,7 @@
 import { homeDir, join } from "@tauri-apps/api/path";
 import { Command } from "@tauri-apps/plugin-shell";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import "./styles.css";
 
 type CaptureChild = {
@@ -44,7 +45,8 @@ type ProjectLibraryItem = {
 
 type CaptureTargets = { monitors: Array<{ index: number; device: string; width: number; height: number; primary: boolean }>; windows: Array<{ hwnd: number; title: string; minimized: boolean }> };
 type ProjectLibrary = { root: string; projects: ProjectLibraryItem[] };
-type PreviewFrame = { time: number; width: number; height: number; mime: string; data: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean };
+type PreviewFrame = { time: number; width: number; height: number; mime?: string; data?: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean; presentation?: "dxgi" | "image"; presented?: boolean; presentedFrames?: number; droppedFrames?: number };
+type PreviewImageFrame = PreviewFrame & { mime: string; data: string };
 
 let projectSnapshot: ProjectSnapshot | null = null;
 let projectFile = "";
@@ -62,6 +64,10 @@ const previewPresentationTimes = new Float64Array(30);
 let previewPresentationCursor = 0;
 let previewPresentationCount = 0;
 let latestPreviewFrame: PreviewFrame | null = null;
+let previewOverlayMode = false;
+let previewOverlayBounds = "";
+let previewWriteChain = Promise.resolve();
+let previewOverlayUpdateScheduled = false;
 
 const defaultDirectory = async () => join(await homeDir(), "Videos", "DogSC");
 
@@ -352,7 +358,7 @@ async function runProjectRename(path: string, name: string): Promise<{ path: str
   });
 }
 
-async function runProjectCompositeFrame(path: string, seconds: number): Promise<PreviewFrame> {
+async function runProjectCompositeFrame(path: string, seconds: number): Promise<PreviewImageFrame> {
   const command = Command.sidecar("binaries/dogsc_capture", ["project", "composite-frame", path, String(seconds), "960"]);
   let output = "";
   let errors = "";
@@ -369,7 +375,7 @@ async function runProjectCompositeFrame(path: string, seconds: number): Promise<
     command.on("close", (event) => {
       if (settled) return;
       if (event.code !== 0) { fail(new Error(errors.trim() || `合成预览命令退出（exit ${event.code ?? "unknown"}）`)); return; }
-      try { settled = true; resolve(JSON.parse(output) as PreviewFrame); }
+      try { settled = true; resolve(JSON.parse(output) as PreviewImageFrame); }
       catch (error) { fail(new Error(`合成预览命令返回了无效 JSON：${String(error)}`)); }
     });
     void command.spawn().catch(fail);
@@ -421,7 +427,7 @@ function previewFrameRate() {
 
 function updatePreviewStatus(frame = latestPreviewFrame) {
   if (!frame) return;
-  const surface = frame.decodeSurface === "DXGI" ? "DXGI surface" : frame.dxgiManager ? "DXGI manager/CPU readback" : "CPU fallback";
+  const surface = frame.presentation === "dxgi" ? "DXGI swapchain" : frame.decodeSurface === "DXGI" ? "DXGI readback" : frame.dxgiManager ? "DXGI manager/CPU readback" : "CPU fallback";
   projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s · ${previewFrameRate().toFixed(0)} fps · ${surface} · 帧 ${previewFramesPresented}/${previewFramesReceived} · 丢帧 ${previewFramesDropped} · 背压 ${previewBackpressureSkips}`;
 }
 
@@ -433,18 +439,79 @@ async function stopPreviewStream() {
     previewChild = null;
   }
   previewBuffer = "";
+  previewOverlayMode = false;
+  previewOverlayBounds = "";
+  previewWriteChain = Promise.resolve();
   previewFrameChain = Promise.resolve();
   previewPlaying = false;
   previewPending = false;
   resetPreviewStats();
   projectPreviewPlay.textContent = "播放";
   projectPreviewImage.removeAttribute("src");
+  projectPreviewImage.style.visibility = "";
   projectPreviewStatus.textContent = "未加载预览";
 }
 
+
+function writePreviewInput(input: string) {
+  const child = previewChild;
+  if (!child) return Promise.reject(new Error("预览流进程尚未启动"));
+  const write = previewWriteChain.catch(() => undefined).then(() => child.write(input));
+  previewWriteChain = write;
+  return write;
+}
+
+async function updatePreviewOverlayBounds() {
+  if (!previewChild || !previewOverlayMode) return;
+  const rect = projectPreviewImage.getBoundingClientRect();
+  const visible = rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.top >= 0
+    && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight;
+  if (!visible) {
+    if (previewOverlayBounds !== "hidden") {
+      previewOverlayBounds = "hidden";
+      await writePreviewInput("H\n");
+    }
+    previewPlaying = false;
+    projectPreviewPlay.textContent = "播放";
+    projectPreviewImage.style.visibility = "";
+    return;
+  }
+  const [origin, scale] = await Promise.all([
+    getCurrentWindow().innerPosition(),
+    getCurrentWindow().scaleFactor(),
+  ]);
+  const bounds = [
+    Math.round(origin.x + rect.left * scale),
+    Math.round(origin.y + rect.top * scale),
+    Math.max(1, Math.round(rect.width * scale)),
+    Math.max(1, Math.round(rect.height * scale)),
+  ];
+  const key = bounds.join(",");
+  if (key === previewOverlayBounds) return;
+  previewOverlayBounds = key;
+  try { await writePreviewInput(`R ${key.replaceAll(",", " ")}\n`); }
+  catch (error) { previewOverlayBounds = ""; throw error; }
+}
+
+function schedulePreviewOverlayBounds() {
+  if (previewOverlayUpdateScheduled) return;
+  previewOverlayUpdateScheduled = true;
+  window.requestAnimationFrame(() => {
+    previewOverlayUpdateScheduled = false;
+    void updatePreviewOverlayBounds().catch((error) => {
+      projectPreviewStatus.textContent = `DXGI overlay 定位失败：${String(error)}`;
+    });
+  });
+}
 function previewAtEnd(time: number, duration: number) {
   return time >= duration - 1e-6;
 }
+function recordPreviewPresentation() {
+  previewPresentationTimes[previewPresentationCursor] = performance.now();
+  previewPresentationCursor = (previewPresentationCursor + 1) % previewPresentationTimes.length;
+  previewPresentationCount = Math.min(previewPresentationCount + 1, previewPresentationTimes.length);
+}
+
 async function presentPreviewLine(line: string, generation: number) {
   if (generation !== previewGeneration) return;
   let payload: PreviewFrame | { error: string };
@@ -482,29 +549,45 @@ async function presentPreviewLine(line: string, generation: number) {
   }
 
   previewFramesReceived += 1;
-  projectPreviewImage.src = payload.data;
-  try {
-    await projectPreviewImage.decode();
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-  } catch {
-    if (generation !== previewGeneration) return;
-    previewPending = false;
-    previewPlaying = false;
-    previewFramesDropped += 1;
-    projectPreviewPlay.textContent = "播放";
-    updatePreviewStatus(payload);
-    return;
+  let presented = false;
+  if (payload.presentation === "dxgi") {
+    projectPreviewImage.style.visibility = "hidden";
+    presented = payload.presented === true;
+    previewFramesPresented = payload.presentedFrames ?? previewFramesPresented + (presented ? 1 : 0);
+    previewFramesDropped = payload.droppedFrames ?? previewFramesDropped + (presented ? 0 : 1);
+  } else {
+    projectPreviewImage.style.visibility = "";
+    if (!payload.data) {
+      previewPending = false;
+      previewPlaying = false;
+      projectPreviewPlay.textContent = "播放";
+      projectPreviewStatus.textContent = "预览没有可显示的图像数据";
+      return;
+    }
+    projectPreviewImage.src = payload.data;
+    try {
+      await projectPreviewImage.decode();
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      presented = true;
+      previewFramesPresented += 1;
+    } catch {
+      if (generation !== previewGeneration) return;
+      previewPending = false;
+      previewPlaying = false;
+      previewFramesDropped += 1;
+      projectPreviewPlay.textContent = "播放";
+      updatePreviewStatus(payload);
+      return;
+    }
   }
   if (generation !== previewGeneration) return;
 
   previewPending = false;
-  previewFramesPresented += 1;
   latestPreviewFrame = payload;
-  previewPresentationTimes[previewPresentationCursor] = performance.now();
-  previewPresentationCursor = (previewPresentationCursor + 1) % previewPresentationTimes.length;
-  previewPresentationCount = Math.min(previewPresentationCount + 1, previewPresentationTimes.length);
+  if (presented) recordPreviewPresentation();
   updatePreviewStatus(payload);
+
 
   if (previewPlaying) {
     const next = payload.time + 1 / 30;
@@ -546,8 +629,16 @@ async function startPreviewStream() {
   const generation = ++previewGeneration;
   previewBuffer = "";
   previewFrameChain = Promise.resolve();
+  previewWriteChain = Promise.resolve();
   resetPreviewStats();
-  const command = Command.sidecar("binaries/dogsc_capture", ["project", "stream", projectFile, "960"]);
+  let ownerHwnd = 0;
+  try { ownerHwnd = await invoke<number>("preview_host_hwnd"); } catch {}
+  previewOverlayMode = ownerHwnd > 0;
+  previewOverlayBounds = "";
+  const args = previewOverlayMode
+    ? ["project", "stream-window", projectFile, "960", String(ownerHwnd)]
+    : ["project", "stream", projectFile, "960"];
+  const command = Command.sidecar("binaries/dogsc_capture", args);
   command.stdout.on("data", (line) => consumePreviewLines(String(line), generation));
   command.stderr.on("data", (line) => {
     if (generation === previewGeneration) projectPreviewStatus.textContent = `预览错误：${String(line).trim()}`;
@@ -555,6 +646,8 @@ async function startPreviewStream() {
   command.on("close", () => {
     if (generation !== previewGeneration) return;
     previewChild = null;
+    previewOverlayMode = false;
+    previewOverlayBounds = "";
     previewPending = false;
     if (previewPlaying) {
       previewPlaying = false;
@@ -568,7 +661,13 @@ async function startPreviewStream() {
       return;
     }
     previewChild = child;
+    if (previewOverlayMode) await updatePreviewOverlayBounds();
   } catch (error) {
+    if (previewChild) {
+      try { await previewChild.kill(); } catch { /* 进程已退出 */ }
+      previewChild = null;
+    }
+    previewOverlayMode = false;
     if (generation === previewGeneration) projectPreviewStatus.textContent = `预览启动失败：${String(error)}`;
   } finally {
     if (generation === previewGeneration) previewStarting = false;
@@ -582,6 +681,14 @@ async function requestPreviewFrame() {
     updatePreviewStatus();
     return;
   }
+  if (previewOverlayMode) {
+    try { await updatePreviewOverlayBounds(); }
+    catch (error) {
+      projectPreviewStatus.textContent = `DXGI overlay 更新失败：${String(error)}`;
+      return;
+    }
+    if (!previewPlaying) return;
+  }
   const seconds = Number(editTime.value) || 0;
   if (previewPlaying && projectSnapshot && previewAtEnd(seconds, projectSnapshot.outputDuration)) {
     previewPlaying = false;
@@ -589,7 +696,7 @@ async function requestPreviewFrame() {
     return;
   }
   previewPending = true;
-  try { await previewChild.write(`F ${seconds}\n`); }
+  try { await writePreviewInput(`F ${seconds}\n`); }
   catch (error) {
     previewPending = false;
     previewPlaying = false;
@@ -985,6 +1092,12 @@ projectRenameName.addEventListener("input", updateEditorButtons);
 projectRename.addEventListener("click", () => { void renameProject(); });
 projectPreviewFrame.addEventListener("click", () => { void loadPreviewFrame(); });
 projectPreviewPlay.addEventListener("click", () => { void togglePreviewPlay(); });
+const previewOverlayResizeObserver = new ResizeObserver(schedulePreviewOverlayBounds);
+previewOverlayResizeObserver.observe(projectPreviewImage);
+window.addEventListener("scroll", schedulePreviewOverlayBounds, true);
+window.addEventListener("resize", schedulePreviewOverlayBounds);
+void getCurrentWindow().onMoved(schedulePreviewOverlayBounds);
+void getCurrentWindow().onResized(schedulePreviewOverlayBounds);
 projectSave.addEventListener("click", () => { void flushProjectSave(); });
 projectDiscard.addEventListener("click", () => { void discardProjectDraft(); });
 projectExportPath.addEventListener("input", updateEditorButtons);

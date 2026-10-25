@@ -1,4 +1,5 @@
 #include "commands.hpp"
+#include "dxgi_preview_overlay.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <iostream>
 #include <iterator>
 #include <d3d11.h>
@@ -484,19 +486,69 @@ int project_frame_command(const std::filesystem::path& project_path, double seco
     return 0;
 }
 
-int project_frame_stream_command(const std::filesystem::path& project_path, std::uint32_t max_width) {
+int project_frame_stream_command(const std::filesystem::path& project_path, std::uint32_t max_width,
+                                 std::uintptr_t preview_owner) {
     const auto normalized = project_path.extension() == ".json" ? project_path : project_path / "project.json";
     FrameReader reader(media_path(normalized));
+    std::unique_ptr<DxgiPreviewOverlay> overlay;
+    if (preview_owner) {
+        try { overlay = std::make_unique<DxgiPreviewOverlay>(preview_owner); }
+        catch (const std::exception& error) {
+            std::cerr << "DXGI overlay initialization failed; using WebView PNG fallback: " << error.what() << '\n';
+        }
+    }
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line == "Q") break;
+        if (line == "H") {
+            if (overlay) overlay->set_bounds(0, 0, 0, 0, false);
+            continue;
+        }
+        if (line.rfind("R ", 0) == 0) {
+            int x = 0, y = 0, width = 0, height = 0;
+            std::istringstream input(line.substr(2));
+            if (!(input >> x >> y >> width >> height)) {
+                std::cout << json{{"error", "预览窗口边界命令必须是 R <x> <y> <width> <height>"}}.dump() << '\n' << std::flush;
+                continue;
+            }
+            if (overlay) {
+                try { overlay->set_bounds(x, y, width, height, true); }
+                catch (const std::exception& error) {
+                    std::cout << json{{"error", error.what()}}.dump() << '\n' << std::flush;
+                }
+            }
+            continue;
+        }
         if (line.rfind("F ", 0) != 0) {
-            std::cout << json{{"error", "预览流命令必须是 F <seconds> 或 Q"}}.dump() << '\n' << std::flush;
+            std::cout << json{{"error", "预览流命令必须是 F <seconds>、R <bounds>、H 或 Q"}}.dump() << '\n' << std::flush;
             continue;
         }
         try {
             const auto seconds = std::stod(line.substr(2));
-            std::cout << frame_json(reader, seconds, max_width, true).dump() << '\n' << std::flush;
+            if (!overlay) {
+                std::cout << frame_json(reader, seconds, max_width, true).dump() << '\n' << std::flush;
+                continue;
+            }
+            std::uint32_t width = 0, height = 0;
+            auto pixels = reader.read_bgra(static_cast<std::int64_t>(seconds * 10000000),
+                max_width, width, height, true);
+            bool presented = false;
+            try { presented = overlay->present(pixels, width, height); }
+            catch (const std::exception& error) {
+                std::cerr << "DXGI overlay presentation failed; using WebView PNG fallback: " << error.what() << '\n';
+                overlay.reset();
+                const auto png = reader.encode_png(pixels, width, height);
+                std::cout << json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
+                    {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
+                    {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "image"},
+                    {"mime", "image/png"}, {"data", "data:image/png;base64," + base64(png)}}.dump() << '\n' << std::flush;
+                continue;
+            }
+            std::cout << json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
+                {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
+                {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
+                {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}}.dump()
+                << '\n' << std::flush;
         } catch (const std::exception& error) {
             std::cout << json{{"error", error.what()}}.dump() << '\n' << std::flush;
         }
