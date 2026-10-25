@@ -29,6 +29,8 @@
 #include "dogsc/frame_scene_evaluator.hpp"
 #include "dogsc/pointer_track.hpp"
 #include "dogsc/timeline_map.hpp"
+#include "dogsc/media_timeline.hpp"
+#include "dogsc/timeline_media_plan.hpp"
 #include "dogsc/native_capture.hpp"
 
 namespace dogsc::cli {
@@ -556,8 +558,14 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
                        int frame_rate) {
     const auto project = load_project(project_path);
     if (!project.media || !project.media->screen.source_end_time) throw std::runtime_error("工程缺少屏幕媒体时长");
-    const auto duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
-    if (!std::isfinite(duration) || duration <= 0) throw std::runtime_error("屏幕媒体时长无效");
+    const auto source_duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
+    if (!std::isfinite(source_duration) || source_duration <= 0) throw std::runtime_error("屏幕媒体时长无效");
+    TimelineMap timeline;
+    if (const auto timeline_error = TimelineMap::create(project.source_sequence, source_duration, timeline)) {
+        throw std::runtime_error(std::string("时间线解析失败: ") + timeline_error->message());
+    }
+    const auto media_plan = TimelineMediaPlan::from_primary(timeline);
+    const auto duration = media_plan.output_duration();
     if (frame_rate < 1 || frame_rate > 120) throw std::invalid_argument("导出帧率必须在 1..120 之间");
     FrameReader reader(media_path(project_path));
     winrt::com_ptr<ID3D11Device> device;
@@ -570,11 +578,11 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
     if (!compositor) throw std::runtime_error("D2D 合成器创建失败: " + error);
     std::optional<ProjectPointerTrack> pointer_track;
     if (const auto events = pointer_events(project_path, project); !events.empty()) {
-        TimelineMap timeline;
-        if (const auto timeline_error = TimelineMap::create(project.source_sequence, duration, timeline)) {
+        TimelineMap pointer_timeline;
+        if (const auto timeline_error = TimelineMap::create(project.source_sequence, duration, pointer_timeline)) {
             throw std::runtime_error(std::string("指针时间线解析失败: ") + timeline_error->message());
         }
-        pointer_track.emplace(ProjectPointerTrack::from_timeline(timeline, events, project.motion));
+        pointer_track.emplace(ProjectPointerTrack::from_timeline(pointer_timeline, events, project.motion));
     }
     CursorAssetMetrics cursor_metrics;
     cursor_metrics.asset_id = CursorAssetID::system_arrow().raw_value;
@@ -595,6 +603,14 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
         camera_reader = std::make_unique<FrameReader>(
             media_reference_path(project_path, *project.media->camera, "摄像头"));
     }
+    std::optional<TimelineMediaPlan> camera_plan;
+    if (project.media && project.media->camera && !project.camera.is_hidden) {
+        const auto& reference = *project.media->camera;
+        const auto available_duration = reference.source_end_time
+            ? std::max(*reference.source_end_time - reference.source_start_time, 0.0) : duration;
+        const auto placement = MediaTimelinePlacement::make(reference, 0, available_duration, duration);
+        camera_plan = TimelineMediaPlan::from_auxiliary(timeline, placement, reference.sync_anchors);
+    }
     capture::WriterOptions options;
     options.path = output.wstring(); options.width = reader.width(); options.height = reader.height();
     options.frame_rate = frame_rate; options.codec = capture::VideoCodec::h264; options.fragmented = false;
@@ -604,7 +620,9 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
     for (std::int64_t index = 0; index < frame_count; ++index) {
         const auto time = static_cast<double>(index) / frame_rate;
         std::uint32_t width = 0, height = 0;
-        const auto pixels = reader.read_bgra(static_cast<std::int64_t>(time * 10000000),
+        const auto source_time = media_plan.source_time_at_output_time(time);
+        if (!source_time) throw std::runtime_error("导出时间线存在不可读取的主媒体缺口");
+        const auto pixels = reader.read_bgra(static_cast<std::int64_t>(*source_time * 10000000),
             std::numeric_limits<std::uint32_t>::max(), width, height);
         const auto texture = texture_from_bgra(device.get(), context.get(), pixels, width, height);
         FrameEvaluationInputs inputs;
@@ -612,15 +630,12 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
         if (pointer_track) inputs.pointer_track = &*pointer_track;
         inputs.cursor_metrics_by_asset = &cursor_metrics_by_asset;
         winrt::com_ptr<ID3D11Texture2D> camera_texture;
-        if (camera_reader && project.media && project.media->camera) {
-            const auto& reference = *project.media->camera;
-            const double timeline_time = time - std::max(reference.start_offset, 0.0);
-            const double source_scale = reference.source_time_scale.value_or(1.0);
-            if (timeline_time >= 0 && std::isfinite(source_scale) && source_scale > 0) {
-                const auto source_time = std::max(reference.source_start_time, 0.0) + timeline_time * source_scale;
+        if (camera_reader && camera_plan) {
+            const auto camera_source_time = camera_plan->source_time_at_output_time(time);
+            if (camera_source_time) {
                 std::uint32_t camera_width = 0, camera_height = 0;
                 const auto camera_pixels = camera_reader->read_bgra(
-                    static_cast<std::int64_t>(source_time * 10000000),
+                    static_cast<std::int64_t>(*camera_source_time * 10000000),
                     std::numeric_limits<std::uint32_t>::max(), camera_width, camera_height);
                 camera_texture = texture_from_bgra(device.get(), context.get(), camera_pixels,
                     camera_width, camera_height);
