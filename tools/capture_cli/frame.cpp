@@ -526,6 +526,32 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
     std::string error;
     auto compositor = D2DFrameCompositor::create(device.get(), error);
     if (!compositor) throw std::runtime_error("D2D 合成器创建失败: " + error);
+    std::optional<ProjectPointerTrack> pointer_track;
+    if (const auto events = pointer_events(project_path, project); !events.empty()) {
+        TimelineMap timeline;
+        if (const auto timeline_error = TimelineMap::create(project.source_sequence, duration, timeline)) {
+            throw std::runtime_error(std::string("指针时间线解析失败: ") + timeline_error->message());
+        }
+        pointer_track.emplace(ProjectPointerTrack::from_timeline(timeline, events, project.motion));
+    }
+    CursorAssetMetrics cursor_metrics;
+    cursor_metrics.asset_id = CursorAssetID::system_arrow().raw_value;
+    cursor_metrics.width = 44;
+    cursor_metrics.height = 44;
+    cursor_metrics.hotspot_x = 5.0 / 44.0;
+    cursor_metrics.hotspot_y = 3.0 / 44.0;
+    cursor_metrics.scale_reference_height = 44;
+    cursor_metrics.click_color = HexColor{"#FFE06A"};
+    std::vector<std::pair<CursorAssetID, CursorAssetMetrics>> cursor_metrics_by_asset;
+    for (const auto& asset : CursorAssetID::system_catalog()) {
+        if (asset != CursorAssetID::hidden()) cursor_metrics_by_asset.emplace_back(asset, cursor_metrics);
+    }
+    const auto cursor_texture = texture_from_bgra(device.get(), context.get(), default_cursor_pixels(), 44, 44);
+    std::unique_ptr<FrameReader> camera_reader;
+    if (project.media && project.media->camera && !project.camera.is_hidden) {
+        camera_reader = std::make_unique<FrameReader>(
+            media_reference_path(project_path, *project.media->camera, "摄像头"));
+    }
     capture::WriterOptions options;
     options.path = output.wstring(); options.width = reader.width(); options.height = reader.height();
     options.frame_rate = frame_rate; options.codec = capture::VideoCodec::h264; options.fragmented = false;
@@ -538,9 +564,33 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
         const auto pixels = reader.read_bgra(static_cast<std::int64_t>(time * 10000000),
             std::numeric_limits<std::uint32_t>::max(), width, height);
         const auto texture = texture_from_bgra(device.get(), context.get(), pixels, width, height);
+        FrameEvaluationInputs inputs;
+        inputs.screen_source_size = {static_cast<double>(width), static_cast<double>(height)};
+        if (pointer_track) inputs.pointer_track = &*pointer_track;
+        inputs.cursor_metrics_by_asset = &cursor_metrics_by_asset;
+        winrt::com_ptr<ID3D11Texture2D> camera_texture;
+        if (camera_reader && project.media && project.media->camera) {
+            const auto& reference = *project.media->camera;
+            const double timeline_time = time - std::max(reference.start_offset, 0.0);
+            const double source_scale = reference.source_time_scale.value_or(1.0);
+            if (timeline_time >= 0 && std::isfinite(source_scale) && source_scale > 0) {
+                const auto source_time = std::max(reference.source_start_time, 0.0) + timeline_time * source_scale;
+                std::uint32_t camera_width = 0, camera_height = 0;
+                const auto camera_pixels = camera_reader->read_bgra(
+                    static_cast<std::int64_t>(source_time * 10000000),
+                    std::numeric_limits<std::uint32_t>::max(), camera_width, camera_height);
+                camera_texture = texture_from_bgra(device.get(), context.get(), camera_pixels,
+                    camera_width, camera_height);
+                inputs.camera_source_size = CompositionSize{
+                    static_cast<double>(camera_width), static_cast<double>(camera_height)};
+            }
+        }
         const auto plan = FrameSceneEvaluator::render_plan(project, time, duration, frame_rate,
-            CompositionSize{static_cast<double>(width), static_cast<double>(height)});
-        FrameRenderResources resources; resources.screen = texture.get();
+            CompositionSize{static_cast<double>(width), static_cast<double>(height)}, inputs);
+        FrameRenderResources resources;
+        resources.screen = texture.get();
+        resources.camera = camera_texture.get();
+        resources.cursor = cursor_texture.get();
         if (!compositor->compose(plan, resources)) throw std::runtime_error(std::string(compositor->last_error()));
         writer.write_video(compositor->output_texture(), index * frame_duration, frame_duration);
     }
