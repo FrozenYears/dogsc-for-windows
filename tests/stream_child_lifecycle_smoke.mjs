@@ -322,7 +322,9 @@ try {
   if (process.env.DOGSC_EXERCISE_EXPORT_CANCEL === "1") {
     await openProject(projectA, titleA);
     const exportOutput = join(exportCancelDirectory, "cancel.mp4");
-    await evaluateValue(`(()=>{const p=document.querySelector("#project-export-path");p.value=${JSON.stringify(exportOutput)};document.querySelector("#project-export").click();return true})()`);
+    await evaluateValue(`(()=>{const p=document.querySelector("#project-export-path");p.value=${JSON.stringify(exportOutput)};p.dispatchEvent(new Event("input",{bubbles:true}));return true})()`);
+    await waitFor("导出按钮启用", async () => await evaluateValue('document.querySelector("#project-export").disabled === false'));
+    await evaluateValue('document.querySelector("#project-export").click(); true');
     await waitFor("导出取消按钮启用", async () => await evaluateValue('document.querySelector("#project-export-cancel").disabled === false'));
     await evaluateValue('document.querySelector("#project-export-cancel").click(); true');
     await waitFor("导出取消完成", async () => await evaluateValue('document.querySelector("#project-export-cancel").disabled === true && document.querySelector("#project-export").disabled === false'));
