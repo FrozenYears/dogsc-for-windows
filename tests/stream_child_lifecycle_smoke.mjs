@@ -21,6 +21,10 @@ function projectPath(value) {
 const appPath = resolve(appArgument);
 let projectA = projectPath(projectAArgument);
 const projectB = projectPath(projectBArgument);
+let exportCancelDirectory = "";
+if (process.env.DOGSC_EXERCISE_EXPORT_CANCEL === "1") {
+  exportCancelDirectory = mkdtempSync(join(tmpdir(), "dogsc-export-cancel-smoke-"));
+}
 let temporaryProjectA = "";
 if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" || process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1" || process.env.DOGSC_REQUIRE_OPENING === "1") {
   temporaryProjectA = mkdtempSync(join(tmpdir(), "dogsc-scene-smoke-"));
@@ -305,6 +309,17 @@ try {
   if (activeProjectStreams.length !== 1 || !activeProjectStreams[0].CommandLine.toLowerCase().includes(projectB.toLowerCase())) {
     throw new Error(`切换后 stream child 状态不正确: ${JSON.stringify(activeProjectStreams)}`);
   }
+  if (process.env.DOGSC_EXERCISE_EXPORT_CANCEL === "1") {
+    await openProject(projectA, titleA);
+    const exportOutput = join(exportCancelDirectory, "cancel.mp4");
+    await evaluateValue(`(()=>{const p=document.querySelector("#project-export-path");p.value=${JSON.stringify(exportOutput)};document.querySelector("#project-export").click();return true})()`);
+    await waitFor("导出取消按钮启用", async () => await evaluateValue('document.querySelector("#project-export-cancel").disabled === false'));
+    await evaluateValue('document.querySelector("#project-export-cancel").click(); true');
+    await waitFor("导出取消完成", async () => await evaluateValue('document.querySelector("#project-export-cancel").disabled === true && document.querySelector("#project-export").disabled === false'));
+    if (existsSync(exportOutput) || existsSync(`${exportOutput}.partial`)) {
+      throw new Error(`取消导出遗留输出文件: ${exportOutput}`);
+    }
+  }
   console.log(`stream_child_lifecycle_smoke: A=${previewStatusA}; B=${previewStatus}; project A child exited before project B child started`);
 } finally {
   socket?.close();
@@ -312,4 +327,5 @@ try {
     try { execFileSync("taskkill.exe", ["/T", "/F", "/PID", String(app.pid)], { stdio: "ignore" }); } catch {}
   }
   if (temporaryProjectA) rmSync(temporaryProjectA, { recursive: true, force: true });
+  if (exportCancelDirectory) rmSync(exportCancelDirectory, { recursive: true, force: true });
 }

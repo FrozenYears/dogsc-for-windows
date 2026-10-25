@@ -1119,19 +1119,20 @@ async function applyProjectStyles() {
 async function cancelProjectExport() {
   if (!exportChild) return;
   const output = projectExportPath.value.trim();
-  projectLog("正在取消导出……", true);
-  try { await exportChild.kill(); } catch (error) { projectLog(`取消导出失败：${String(error)}`, false); }
+  const child = exportChild;
   exportChild = null;
-  try { await cleanupExportPartial(output); } catch (error) { projectLog(`partial 清理失败：${String(error)}`, false); }
   projectCommandBusy = false;
   updateEditorButtons();
+  projectLog("正在取消导出……", true);
+  try { await child.kill(); } catch (error) { projectLog(`取消导出失败：${String(error)}`, false); }
+  try { await cleanupExportPartial(output); } catch (error) { projectLog(`partial 清理失败：${String(error)}`, false); }
 }
 
 async function exportProject() {
   if (!projectFile || !projectExportPath.value.trim() || !(await flushProjectSave())) return;
   projectCommandBusy = true;
   projectExport.disabled = true;
-  projectExportCancel.disabled = false;
+  projectExportCancel.disabled = true;
   try {
     const result = await runProjectExport(projectFile, projectExportPath.value.trim());
     projectLog(`导出完成：${result.frameCount} 帧，${result.duration.toFixed(2)}s`, false);
