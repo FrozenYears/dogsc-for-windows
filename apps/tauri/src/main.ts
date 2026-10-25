@@ -140,7 +140,7 @@ app.innerHTML = `
           <section class="timeline-panel">
             <div class="timeline-controls"><button class="icon-button small" type="button">◀</button><button id="project-preview-play" class="play-button" type="button" disabled>▶</button><button class="icon-button small" type="button">▶</button><span class="timecode"><input id="edit-time" type="number" min="0" step="0.01" placeholder="0.00" /> / <span class="timeline-duration">—</span></span><span class="timeline-spacer"></span><label class="field timeline-format"><span>格式</span><select id="project-export-format"><option value="mp4">MP4 视频</option><option value="m4a">M4A 音频</option></select></label><label class="field timeline-path"><span>导出</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary compact" type="button" disabled>导出</button><button id="project-export-cancel" class="secondary danger compact" type="button" disabled>取消</button></div>
             <div class="timeline-ruler"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:30</span><span>0:35</span><span>0:40</span><span>0:45</span><span>0:50</span><span>0:55</span><span>1:00</span></div>
-            <div class="timeline-head"><strong>时间线</strong><span class="timeline-save-label">保存状态在窗口顶部</span><div class="project-history-actions"><button id="project-save" class="secondary compact" type="button" disabled>保存</button><button id="project-discard" class="secondary danger compact" type="button" disabled>放弃</button><button id="project-undo" class="secondary compact" type="button" disabled>撤销</button><button id="project-redo" class="secondary compact" type="button" disabled>重做</button></div></div>
+            <div class="timeline-head"><strong>时间线</strong><span class="timeline-save-label">保存状态在窗口顶部</span><div class="project-history-actions"><button id="edit-marker" class="secondary compact" type="button" disabled>标记</button><button id="project-save" class="secondary compact" type="button" disabled>保存</button><button id="project-discard" class="secondary danger compact" type="button" disabled>放弃</button><button id="project-undo" class="secondary compact" type="button" disabled>撤销</button><button id="project-redo" class="secondary compact" type="button" disabled>重做</button></div></div>
             <div id="timeline" class="timeline"><span class="timeline-empty">打开工程后开始编辑</span></div>
             <div class="timeline-edit-row"><label class="field"><span>当前片段</span><select id="edit-segment"><option value="">未选择</option></select></label><label class="field"><span>速度</span><input id="edit-rate" type="number" min="1" max="100" step="0.1" value="1" /></label><div class="editor-actions"><button id="edit-split" class="secondary compact" type="button" disabled>分割</button><button id="edit-trim-left" class="secondary compact" type="button" disabled>左裁切</button><button id="edit-trim-right" class="secondary compact" type="button" disabled>右裁切</button><button id="edit-rate-button" class="secondary compact" type="button" disabled>应用速度</button><button id="edit-move-up" class="secondary compact" type="button" disabled>上移</button><button id="edit-move-down" class="secondary compact" type="button" disabled>下移</button><button id="edit-remove" class="secondary danger compact" type="button" disabled>删除</button></div></div>
             <div class="timeline-actions"><label class="field"><span>运镜</span><input id="screen-motion-start" type="hidden" value="0" /><input id="screen-motion-duration" type="hidden" value="1" /><input id="screen-motion-geometry" type="hidden" value="0.5,0.5,1.2,0,0,0,0.65" /></label><button id="screen-motion-apply" class="secondary compact" type="button" disabled>添加运镜</button><span id="project-console" class="project-console" aria-live="polite"><span class="console-line muted">等待打开工程……</span></span></div>
@@ -184,6 +184,7 @@ const editTrimLeft = $("edit-trim-left") as HTMLButtonElement;
 const editTrimRight = $("edit-trim-right") as HTMLButtonElement;
 const editRateButton = $("edit-rate-button") as HTMLButtonElement;
 const editRemove = $("edit-remove") as HTMLButtonElement;
+const editMarker = $("edit-marker") as HTMLButtonElement;
 const projectConsole = $("project-console");
 const railProjects = $("rail-projects") as HTMLButtonElement;
 const libraryRoot = $("library-root") as HTMLInputElement;
@@ -844,6 +845,7 @@ function updateEditorButtons() {
   projectExportCancel.disabled = exportChild === null;
   styleApply.disabled = !hasProject || projectCommandBusy;
   screenMotionApply.disabled = !hasProject || projectCommandBusy;
+  editMarker.disabled = !hasProject || projectCommandBusy;
   mosaicApply.disabled = !hasProject || projectCommandBusy;
   stickerApply.disabled = !hasProject || projectCommandBusy;
   const dirty = snapshot?.session?.dirty ?? false;
@@ -1110,6 +1112,13 @@ async function renameProject() {
   }
 }
 
+async function applyMarker() {
+  if (!projectFile) return;
+  const time = Number(editTime.value);
+  if (!Number.isFinite(time)) { projectLog("标记时间无效", false); return; }
+  await applyProjectEdit("marker", String(time));
+}
+
 async function applyScreenMotion() {
   if (!projectFile) return;
   const values = screenMotionGeometry.value.split(",").map((value) => Number(value.trim()));
@@ -1234,6 +1243,7 @@ projectExportCancel.addEventListener("click", () => { void cancelProjectExport()
 styleApply.addEventListener("click", () => { void applyProjectStyles(); });
 mosaicApply.addEventListener("click", () => { void applyMosaic(); });
 screenMotionApply.addEventListener("click", () => { void applyScreenMotion(); });
+editMarker.addEventListener("click", () => { void applyMarker(); });
 stickerApply.addEventListener("click", () => { void applySticker(); });
 let closeConfirmationInProgress = false;
 void getCurrentWindow().onCloseRequested(async (event) => {

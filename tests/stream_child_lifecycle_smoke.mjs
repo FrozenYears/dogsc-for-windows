@@ -220,6 +220,10 @@ try {
     await evaluateValue('(()=>{document.querySelector("#screen-motion-geometry").value="0.5,0.5,1.2,6,-4,0,0.65";document.querySelector("#screen-motion-apply").click();return true})()');
     await waitFor("screen motion clip 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
   }
+  if (process.env.DOGSC_EXERCISE_MARKER === "1") {
+    await evaluateValue('document.querySelector("#edit-time").value="0.05";document.querySelector("#edit-marker").click(); true');
+    await waitFor("recording marker 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
+  }
   await revealPreview();
   await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
   await waitForStream(projectA, true);

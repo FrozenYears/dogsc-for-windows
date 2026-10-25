@@ -475,7 +475,17 @@ RecorderProject apply_edit(const RecorderProject& project, std::wstring_view ope
     const auto duration = full_source_duration(project);
     if (count < 1) throw std::invalid_argument("项目 edit 缺少操作参数");
     auto result = ProjectTimelineEditResult{};
-    if (operation == L"split") {
+    if (operation == L"marker") {
+        if (count != 1) throw std::invalid_argument("marker 需要 source-time");
+        auto output = project;
+        RecordingMarker marker;
+        marker.id = new_uuid(project);
+        marker.source_time = std::clamp(parse_double(arguments[0], "source-time"), 0.0, duration);
+        marker.number = 1;
+        for (const auto& existing : output.recording_markers) marker.number = std::max(marker.number, existing.number + 1);
+        output.recording_markers.push_back(marker);
+        result = std::move(output);
+    } else if (operation == L"split") {
         if (count != 1) throw std::invalid_argument("split 需要 output-time");
         result = ProjectTimelineEditing::split_primary_segment(
             project, parse_double(arguments[0], "output-time"), new_uuid(project), duration);
