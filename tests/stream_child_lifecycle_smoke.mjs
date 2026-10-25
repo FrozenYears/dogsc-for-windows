@@ -23,7 +23,7 @@ let projectA = projectPath(projectAArgument);
 const projectB = projectPath(projectBArgument);
 let exportCancelDirectory = "";
 if (process.env.DOGSC_EXERCISE_EXPORT_CANCEL === "1") {
-  exportCancelDirectory = mkdtempSync(join(tmpdir(), "dogsc-export-cancel-smoke-"));
+  exportCancelDirectory = mkdtempSync(join(tmpdir(), "dogsc-export-smoke-"));
 }
 let temporaryProjectA = "";
 if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" || process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1" || process.env.DOGSC_REQUIRE_OPENING === "1") {

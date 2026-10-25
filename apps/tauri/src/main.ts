@@ -144,7 +144,7 @@ app.innerHTML = `
           <div class="project-rename-row"><label class="field"><span>工程名称</span><input id="project-rename-name" type="text" spellcheck="false" placeholder="新工程目录名" /></label><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
           <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div><strong id="project-save-state">未打开</strong><span>保存状态</span></div><div class="project-history-actions"><button id="project-save" class="secondary" type="button" disabled>保存</button><button id="project-discard" class="secondary danger" type="button" disabled>放弃草稿</button><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
           <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
-          <div class="project-export-row"><label class="field"><span>导出 MP4</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary" type="button" disabled>导出</button><button id="project-export-cancel" class="secondary danger" type="button" disabled>取消导出</button></div>
+          <div class="project-export-row"><label class="field"><span>导出格式</span><select id="project-export-format"><option value="mp4">MP4 视频</option><option value="m4a">M4A 音频</option></select></label><label class="field"><span>导出路径</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary" type="button" disabled>导出</button><button id="project-export-cancel" class="secondary danger" type="button" disabled>取消导出</button></div>
           <div class="style-row"><label class="field"><span>背景</span><select id="style-background"><option>黑曜石网格</option><option>工程白网格</option><option>暗夜星阵</option><option>建筑极简点</option><option>立体等角网</option></select></label><label class="field"><span>留白</span><input id="style-padding" type="number" min="0" max="1000" step="1" value="100" /></label><label class="field"><span>摄像头尺寸</span><input id="style-camera-size" type="number" min="0.05" max="1" step="0.01" value="0.29" /></label><label class="field"><span>光标尺寸</span><input id="style-cursor-size" type="number" min="0.25" max="6" step="0.05" value="1.25" /></label><button id="style-apply" class="secondary" type="button" disabled>应用画面参数</button></div>
           <div class="effect-row"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>点击透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>点击缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label></div>
           <div class="camera-row"><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div>
@@ -218,6 +218,7 @@ const projectSaveState = $("project-save-state");
 const projectSave = $("project-save") as HTMLButtonElement;
 const projectDiscard = $("project-discard") as HTMLButtonElement;
 const projectExportPath = $("project-export-path") as HTMLInputElement;
+const projectExportFormat = $("project-export-format") as HTMLSelectElement;
 const projectExportCancel = $("project-export-cancel") as HTMLButtonElement;
 const projectExport = $("project-export") as HTMLButtonElement;
 const styleBackground = $("style-background") as HTMLSelectElement;
@@ -404,8 +405,10 @@ async function runProjectCompositeFrame(path: string, seconds: number): Promise<
   });
 }
 
-async function runProjectExport(path: string, output: string): Promise<{ output: string; frameCount: number; duration: number }> {
-  const command = Command.sidecar("binaries/dogsc_capture", ["project", "export-video", path, output, "30"]);
+async function runProjectExport(path: string, output: string, format: "mp4" | "m4a"): Promise<{ output: string; frameCount?: number; duration: number; sampleRate?: number; channels?: number }> {
+  const command = format === "m4a"
+    ? Command.sidecar("binaries/dogsc_capture", ["project", "export-audio", path, output])
+    : Command.sidecar("binaries/dogsc_capture", ["project", "export-video", path, output, "30"]);
   let finalText = "";
   let errors = "";
   return await new Promise((resolve, reject) => {
@@ -1134,8 +1137,11 @@ async function exportProject() {
   projectExport.disabled = true;
   projectExportCancel.disabled = true;
   try {
-    const result = await runProjectExport(projectFile, projectExportPath.value.trim());
-    projectLog(`导出完成：${result.frameCount} 帧，${result.duration.toFixed(2)}s`, false);
+    const format = projectExportFormat.value as "mp4" | "m4a";
+    const result = await runProjectExport(projectFile, projectExportPath.value.trim(), format);
+    projectLog(format === "m4a"
+      ? `M4A 导出完成：${result.duration.toFixed(2)}s · ${result.sampleRate ?? 0}Hz`
+      : `MP4 导出完成：${result.frameCount ?? 0} 帧，${result.duration.toFixed(2)}s`, false);
   } catch (error) {
     try { await cleanupExportPartial(projectExportPath.value.trim()); } catch (cleanupError) {
       projectLog(`导出失败且 partial 清理失败：${String(cleanupError)}`, false);
