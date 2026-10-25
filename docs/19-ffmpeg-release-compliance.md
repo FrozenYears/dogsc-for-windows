@@ -41,4 +41,4 @@ FFmpeg 版本、配置参数、源码归档哈希和补丁哈希必须与发布�
 
 ## 当前结论
 
-当前项目可以证明动态 FFmpeg 链接和短时功能 smoke，但不能证明 LGPL 发布材料齐全、源码对应、构建可复现或专利风险已关闭。因此 `18-feature-matrix.md` 的 Release/FFmpeg 项继续标记为 partial，安装包不得标记为最终合规发布版。
+当前本机已取得与 vcpkg FFmpeg `n9.0.2` port SHA-512 相符的源码归档，并已计算 SHA-256；对应 vcpkg port 的 14 个补丁也已逐个计算 SHA-256。当前 manifest 仍是本机发布工作目录证据，源码、补丁、许可证文本、构建复现说明、DLL 可替换验证和法律审查尚未进入最终发布包闭环。因此 `18-feature-matrix.md` 的 Release/FFmpeg 项继续标记为 partial，安装包不得标记为最终合规发布版。

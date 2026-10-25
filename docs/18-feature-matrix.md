@@ -36,7 +36,7 @@
 | Shell | 中文基础界面 | 已实现部分 | Tauri | 两仓库布局/检查器 | UI smoke |
 | Shell | 英文/本地化切换 | P5 partial：settings modal 已提供简体中文/English preference、核心 toolbar/action labels 可运行时切换并持久化；完整界面翻译与资源本地化未完成 | localization + Tauri | xiaoying localization | 运行时切换、重启保留 |
 | Shell | 设置/权限/托盘/备忘录/标记 | P5 partial：显示器/窗口枚举、源切换、区域参数与 WebView region picker、settings modal、采集能力预检、Windows 隐私设置入口、recording marker、Tauri native tray 已接入；权限结果专用向导、备忘录浮窗、DPI/多显示器 picker 仍未完成 | Tauri/Win32 + project model | adrian dialogs/memo | 权限失败、托盘、设置持久化、多显示器区域、marker 重开 |
-| Release | FFmpeg 动态 LGPL | P6 partial：动态 DLL 链接、sidecar 携带与禁止 GPL 参考包边界已固化；新增 `docs/19-ffmpeg-release-compliance.md` 清单，但对应源码、补丁、构建复现材料、NOTICE 与法律审查尚未完成 | CMake/vcpkg/package | 不复制 adrian GPL 包 | DLL 哈希、源码、补丁、NOTICE、替换 DLL、安装/卸载审计 |
+| Release | FFmpeg 动态 LGPL | P6 partial：动态 DLL 链接、sidecar 携带与禁止 GPL 参考包边界已固化；已取得与 vcpkg `n9.0.2` port SHA-512 相符的源码归档并记录 14 个补丁哈希；最终发布包仍缺许可证/NOTICE 装配、构建复现说明、DLL 可替换验证与法律审查 | CMake/vcpkg/package | 不复制 adrian GPL 包 | DLL/源码/补丁哈希、NOTICE、替换 DLL、安装/卸载审计 |
 | Release | 长时/跨硬件 | P6 partial：当前 NVIDIA 机器 2560×1600 HEVC 60s/60fps 实录输出 3600 帧、音频 60s、0 非单调丢帧、0 音频 discontinuity；采集端报告 3521 captured、293 repeated；4K60、AMD/Intel/无硬件编码器、长时多轮与休眠恢复仍未完成 | capture/export | 两仓库测试矩阵思路 | 4K60、混合显卡、休眠恢复、重复帧阈值 |
 
 ## 参考实现边界

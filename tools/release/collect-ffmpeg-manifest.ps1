@@ -2,7 +2,8 @@ param(
     [string]$SidecarDirectory = (Join-Path $PSScriptRoot "../../apps/tauri/src-tauri/binaries"),
     [string]$OutputPath = (Join-Path $PSScriptRoot "../../out/release/ffmpeg-dll-manifest.json"),
     [string]$SourceArchive = "",
-    [string]$InstallerPath = ""
+    [string]$InstallerPath = "",
+    [string]$PatchDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,8 +33,21 @@ if ($InstallerPath) {
         sha256 = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
 }
+$patches = @()
+if ($PatchDirectory) {
+    $patchRoot = (Resolve-Path $PatchDirectory).Path
+    $patches = @((Get-ChildItem -LiteralPath $patchRoot -Filter "*.patch" -File | Sort-Object Name | ForEach-Object {
+        [ordered]@{
+            name = $_.Name
+            bytes = $_.Length
+            sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }))
+    if ($patches.Count -eq 0) { throw "补丁目录没有 .patch 文件：$patchRoot" }
+}
 
-$manifest = [ordered]@{
+
+ $manifest = [ordered]@{
     schema = 1
     generatedAtUtc = [DateTime]::UtcNow.ToString("o")
     dynamicLinkingRequired = $true
@@ -41,6 +55,7 @@ $manifest = [ordered]@{
     sourceArchive = $source
     sourceArchiveRequiredBeforeRelease = $true
     installer = $installer
+    patches = $patches
     dlls = $entries
 }
 
