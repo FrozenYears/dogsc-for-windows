@@ -1,0 +1,14 @@
+DogSC Studio FFmpeg notice
+
+DogSC Studio uses dynamically linked FFmpeg libraries from FFmpeg 9.0.2 (vcpkg reference n9.0.2) for the optional ProRes/MOV and media fallback paths.
+
+License: GNU Lesser General Public License, version 2.1 or later, as applicable to the selected FFmpeg build. The complete license text is COPYING.LGPLv2.1 in the corresponding FFmpeg source archive.
+
+Source archive:
+  ffmpeg-n9.0.2.tar.gz
+  Official source: https://github.com/FFmpeg/FFmpeg/tree/n9.0.2
+  vcpkg source SHA-512: 21bf3fbcdfd2f41ea6edeab40433fecfe362b09ecaa177a652471b54f9357011b4f74dab18245ab1c26f1a473b94205490baecb42289afd2effd603cd0b22b59
+
+This application links FFmpeg dynamically. The release materials archive contains the corresponding source archive, vcpkg port file, build configuration evidence and the patches applied by the selected vcpkg port. See docs/19-ffmpeg-release-compliance.md for the release checklist.
+
+This notice is not a legal opinion. ProRes, AAC and other codec patent questions require separate review for the target distribution jurisdictions.

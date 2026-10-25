@@ -35,7 +35,8 @@
     "resources": {
       "binaries/*.dll": "",
       "../../../LICENSE": "LICENSE",
-      "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+      "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../../../docs/release/FFMPEG-LGPL-NOTICE.txt": "FFMPEG-LGPL-NOTICE.txt"
     }
   }
 }
