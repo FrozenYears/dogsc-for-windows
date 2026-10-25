@@ -3,7 +3,8 @@ param(
     [string]$OutputPath = (Join-Path $PSScriptRoot "../../out/release/ffmpeg-dll-manifest.json"),
     [string]$SourceArchive = "",
     [string]$InstallerPath = "",
-    [string]$PatchDirectory = ""
+    [string]$PatchDirectory = "",
+    [string]$MaterialsArchivePath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,6 +46,16 @@ if ($PatchDirectory) {
     }))
     if ($patches.Count -eq 0) { throw "补丁目录没有 .patch 文件：$patchRoot" }
 }
+$materials = $null
+if ($MaterialsArchivePath) {
+    $materialsFile = Get-Item -LiteralPath $MaterialsArchivePath
+    $materials = [ordered]@{
+        path = $materialsFile.FullName
+        bytes = $materialsFile.Length
+        sha256 = (Get-FileHash -LiteralPath $materialsFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
+
 
 
  $manifest = [ordered]@{
@@ -55,6 +66,7 @@ if ($PatchDirectory) {
     sourceArchive = $source
     sourceArchiveRequiredBeforeRelease = $true
     installer = $installer
+    materialsArchive = $materials
     patches = $patches
     dlls = $entries
 }
