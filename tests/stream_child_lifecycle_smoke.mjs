@@ -22,7 +22,7 @@ const appPath = resolve(appArgument);
 let projectA = projectPath(projectAArgument);
 const projectB = projectPath(projectBArgument);
 let exportCancelDirectory = "";
-if (process.env.DOGSC_EXERCISE_EXPORT_CANCEL === "1") {
+if (process.env.DOGSC_EXERCISE_EXPORT_CANCEL === "1" || process.env.DOGSC_EXERCISE_M4A_EXPORT === "1" || process.env.DOGSC_EXERCISE_M4A_CANCEL === "1") {
   exportCancelDirectory = mkdtempSync(join(tmpdir(), "dogsc-export-smoke-"));
 }
 let temporaryProjectA = "";
@@ -338,6 +338,17 @@ try {
     await evaluateValue(`(()=>{document.querySelector("#project-export-format").value="m4a";const p=document.querySelector("#project-export-path");p.value=${JSON.stringify(exportOutput)};p.dispatchEvent(new Event("input",{bubbles:true}));document.querySelector("#project-export").click();return true})()`);
     await waitFor("M4A 导出完成", async () => await evaluateValue('document.querySelector("#project-export").disabled === false && document.querySelector("#project-console").textContent.includes("M4A 导出完成")'));
     if (!existsSync(exportOutput)) throw new Error(`M4A 导出文件不存在: ${exportOutput}`);
+  }
+  if (process.env.DOGSC_EXERCISE_M4A_CANCEL === "1") {
+    await openProject(projectA, titleA);
+    const exportOutput = join(exportCancelDirectory, "cancel.m4a");
+    await evaluateValue(`(()=>{document.querySelector("#project-export-format").value="m4a";const p=document.querySelector("#project-export-path");p.value=${JSON.stringify(exportOutput)};p.dispatchEvent(new Event("input",{bubbles:true}));return true})()`);
+    await waitFor("M4A export button enabled", async () => await evaluateValue('document.querySelector("#project-export").disabled === false'));
+    await evaluateValue('document.querySelector("#project-export").click(); true');
+    await waitFor("M4A cancel button enabled", async () => await evaluateValue('document.querySelector("#project-export-cancel").disabled === false'));
+    await evaluateValue('document.querySelector("#project-export-cancel").click(); true');
+    await waitFor("M4A cancel completed", async () => await evaluateValue('document.querySelector("#project-export-cancel").disabled === true && document.querySelector("#project-export").disabled === false'));
+    if (existsSync(exportOutput) || existsSync(`${exportOutput}.partial`)) throw new Error(`M4A cancel left output: ${exportOutput}`);
   }
   console.log(`stream_child_lifecycle_smoke: A=${previewStatusA}; B=${previewStatus}; project A child exited before project B child started`);
 } finally {
