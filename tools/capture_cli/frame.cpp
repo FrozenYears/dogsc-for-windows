@@ -2,6 +2,7 @@
 #include "dxgi_preview_overlay.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -25,6 +26,8 @@
 #include "dogsc/project_json.hpp"
 #include "dogsc/d2d_frame_compositor.hpp"
 #include "dogsc/frame_scene_evaluator.hpp"
+#include "dogsc/pointer_track.hpp"
+#include "dogsc/timeline_map.hpp"
 #include "dogsc/native_capture.hpp"
 
 namespace dogsc::cli {
@@ -91,6 +94,23 @@ std::vector<std::uint8_t> png_from_bgra(IWICImagingFactory* factory,
 }
 
 
+std::filesystem::path safe_media_path(const std::filesystem::path& project_path, std::string_view relative_value,
+                                      const char* label) {
+    if (relative_value.empty()) throw std::runtime_error(std::string("工程缺少") + label + "媒体引用");
+    const std::filesystem::path relative(relative_value);
+    if (relative.is_absolute()) throw std::runtime_error(std::string(label) + "媒体路径不能是绝对路径");
+    for (const auto& part : relative) if (part == "..") {
+        throw std::runtime_error(std::string(label) + "媒体路径越界");
+    }
+    return project_path.parent_path() / relative;
+}
+
+std::filesystem::path media_reference_path(const std::filesystem::path& project_path,
+                                            const ProjectMediaReference& reference,
+                                            const char* label) {
+    return safe_media_path(project_path, reference.relative_path, label);
+}
+
 std::filesystem::path media_path(const std::filesystem::path& project_path) {
     RecorderProject project;
     ProjectJsonError error;
@@ -98,13 +118,34 @@ std::filesystem::path media_path(const std::filesystem::path& project_path) {
     if (!input) throw std::runtime_error("无法打开工程文件");
     std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     if (!ProjectJson::decode(text, project, error)) throw std::runtime_error("工程解析失败: " + error.detail);
-    if (!project.media || project.media->screen.relative_path.empty()) {
-        throw std::runtime_error("工程缺少屏幕媒体引用");
+    if (!project.media) throw std::runtime_error("工程缺少屏幕媒体引用");
+    return media_reference_path(project_path, project.media->screen, "屏幕");
+}
+
+std::vector<PointerEventRecord> pointer_events(const std::filesystem::path& project_path,
+                                               const RecorderProject& project) {
+    if (!project.media || !project.media->pointer_events) return {};
+    const auto path = media_reference_path(project_path, *project.media->pointer_events, "指针");
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("无法打开指针轨: " + path.string());
+    std::vector<PointerEventRecord> events;
+    std::string line;
+    while (std::getline(input, line)) {
+        if (line.empty()) continue;
+        const auto value = json::parse(line);
+        PointerEventRecord event;
+        event.time = value.at("time").get<double>();
+        event.location = {value.at("location").at("x").get<double>(),
+                          value.at("location").at("y").get<double>()};
+        const auto kind = value.value("kind", "move");
+        if (kind == "leftClick") event.kind = PointerEventKind::kLeftClick;
+        else if (kind == "rightClick") event.kind = PointerEventKind::kRightClick;
+        else if (kind != "move") throw std::runtime_error("指针事件类型无效: " + kind);
+        const auto asset = value.value("cursorAssetID", "");
+        if (!asset.empty()) event.cursor_asset_id = CursorAssetID{asset};
+        events.push_back(std::move(event));
     }
-    const std::filesystem::path relative(project.media->screen.relative_path);
-    if (relative.is_absolute()) throw std::runtime_error("屏幕媒体路径不能是绝对路径");
-    for (const auto& part : relative) if (part == "..") throw std::runtime_error("屏幕媒体路径越界");
-    return project_path.parent_path() / relative;
+    return events;
 }
 
 class FrameReader {
@@ -422,6 +463,38 @@ json composite_frame_json(const std::filesystem::path& project_path, double seco
     return json{{"time", seconds}, {"width", width}, {"height", height},
                 {"mime", "image/png"}, {"data", "data:image/png;base64," + base64(png)}};
 }
+std::vector<std::uint8_t> default_cursor_pixels() {
+    constexpr std::uint32_t size = 44;
+    const std::array<CompositionPoint, 7> outer{{{4, 2}, {4, 35}, {13, 26}, {20, 41},
+        {27, 37}, {20, 23}, {33, 23}}};
+    const std::array<CompositionPoint, 7> inner{{{7, 7}, {7, 28}, {13, 22}, {18, 35},
+        {22, 33}, {16, 20}, {27, 20}}};
+    const auto contains = [](const auto& polygon, double x, double y) {
+        bool inside = false;
+        for (std::size_t index = 0, previous = polygon.size() - 1; index < polygon.size();
+             previous = index++) {
+            const auto& a = polygon[index];
+            const auto& b = polygon[previous];
+            if (((a.y > y) != (b.y > y)) &&
+                x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+        }
+        return inside;
+    };
+    std::vector<std::uint8_t> pixels(size * size * 4, 0);
+    for (std::uint32_t y = 0; y < size; ++y) for (std::uint32_t x = 0; x < size; ++x) {
+        auto* pixel = pixels.data() + (static_cast<std::size_t>(y) * size + x) * 4;
+        if (contains(outer, x + 0.5, y + 0.5)) {
+            pixel[0] = pixel[1] = pixel[2] = 0;
+            pixel[3] = 230;
+        }
+        if (contains(inner, x + 0.5, y + 0.5)) {
+            pixel[0] = pixel[1] = pixel[2] = 255;
+            pixel[3] = 255;
+        }
+    }
+    return pixels;
+}
+
 winrt::com_ptr<ID3D11Texture2D> texture_from_bgra(ID3D11Device* device, ID3D11DeviceContext* context,
                                                    const std::vector<std::uint8_t>& pixels,
                                                    std::uint32_t width, std::uint32_t height) {
@@ -499,6 +572,11 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
     }
     RecorderProject project;
     double duration = 0;
+    std::optional<ProjectPointerTrack> pointer_track;
+    CursorAssetMetrics cursor_metrics;
+    std::vector<std::pair<CursorAssetID, CursorAssetMetrics>> cursor_metrics_by_asset;
+    winrt::com_ptr<ID3D11Texture2D> cursor_texture;
+    std::unique_ptr<FrameReader> camera_reader;
     std::unique_ptr<D2DFrameCompositor> compositor;
     if (overlay) {
         try {
@@ -511,6 +589,36 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             std::string error;
             compositor = D2DFrameCompositor::create(overlay->device(), error);
             if (!compositor) throw std::runtime_error(error);
+            const auto events = pointer_events(normalized, project);
+            if (!events.empty()) {
+                TimelineMap timeline;
+                if (const auto timeline_error = TimelineMap::create(project.source_sequence, duration, timeline)) {
+                    throw std::runtime_error(std::string("指针时间线解析失败: ") + timeline_error->message());
+                }
+                pointer_track.emplace(ProjectPointerTrack::from_timeline(timeline, events, project.motion));
+            }
+            cursor_metrics.asset_id = CursorAssetID::system_arrow().raw_value;
+            cursor_metrics.width = 44;
+            cursor_metrics.height = 44;
+            cursor_metrics.hotspot_x = 5.0 / 44.0;
+            cursor_metrics.hotspot_y = 3.0 / 44.0;
+            cursor_metrics.scale_reference_height = 44;
+            cursor_metrics.click_color = HexColor{"#FFE06A"};
+            for (const auto& asset : CursorAssetID::system_catalog()) {
+                if (asset == CursorAssetID::hidden()) continue;
+                cursor_metrics_by_asset.emplace_back(asset, cursor_metrics);
+            }
+            cursor_texture = texture_from_bgra(overlay->device(), overlay->context(),
+                default_cursor_pixels(), 44, 44);
+            if (project.media && project.media->camera && !project.camera.is_hidden) {
+                try {
+                    camera_reader = std::make_unique<FrameReader>(
+                        media_reference_path(normalized, *project.media->camera, "摄像头"));
+                } catch (const std::exception& error) {
+                    std::cerr << "Camera preview source unavailable; continuing without camera: "
+                              << error.what() << '\n';
+                }
+            }
         } catch (const std::exception& error) {
             std::cerr << "D2D preview initialization failed; using source frames: " << error.what() << '\n';
             compositor.reset();
@@ -553,15 +661,47 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                 max_width, width, height, true);
             bool presented = false;
             bool composed = false;
+            bool scene_has_camera = false;
+            bool scene_has_cursor = false;
+            bool scene_has_click = false;
             if (compositor) {
                 try {
                     const auto texture = texture_from_bgra(overlay->device(), overlay->context(),
                         pixels, width, height);
+                    FrameEvaluationInputs inputs;
+                    inputs.screen_source_size = {static_cast<double>(width), static_cast<double>(height)};
+                    if (pointer_track) inputs.pointer_track = &*pointer_track;
+                    if (!cursor_metrics_by_asset.empty()) {
+                        inputs.cursor_metrics_by_asset = &cursor_metrics_by_asset;
+                    }
+                    winrt::com_ptr<ID3D11Texture2D> camera_texture;
+                    std::uint32_t camera_width = 0, camera_height = 0;
+                    if (camera_reader && project.media && project.media->camera) {
+                        const auto& reference = *project.media->camera;
+                        const double timeline_time = seconds - std::max(reference.start_offset, 0.0);
+                        const double source_scale = reference.source_time_scale.value_or(1.0);
+                        if (timeline_time >= 0 && std::isfinite(source_scale) && source_scale > 0) {
+                            const auto source_time = std::max(reference.source_start_time, 0.0) +
+                                timeline_time * source_scale;
+                            auto camera_pixels = camera_reader->read_bgra(
+                                static_cast<std::int64_t>(source_time * 10000000), max_width,
+                                camera_width, camera_height, true);
+                            camera_texture = texture_from_bgra(overlay->device(), overlay->context(),
+                                camera_pixels, camera_width, camera_height);
+                            inputs.camera_source_size = CompositionSize{
+                                static_cast<double>(camera_width), static_cast<double>(camera_height)};
+                        }
+                    }
                     const auto plan = FrameSceneEvaluator::render_plan(project, seconds, duration,
                         project.export_settings.frame_rate,
-                        CompositionSize{static_cast<double>(width), static_cast<double>(height)});
+                        CompositionSize{static_cast<double>(width), static_cast<double>(height)}, inputs);
+                    scene_has_camera = plan.scene.camera.has_value();
+                    scene_has_cursor = plan.scene.cursor.has_value();
+                    scene_has_click = plan.scene.cursor && plan.scene.cursor->click_geometry.has_value();
                     FrameRenderResources resources;
                     resources.screen = texture.get();
+                    resources.camera = camera_texture.get();
+                    resources.cursor = cursor_texture.get();
                     if (!compositor->compose(plan, resources)) {
                         throw std::runtime_error(std::string(compositor->last_error()));
                     }
@@ -589,8 +729,8 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             auto response = json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
-                {"composed", composed}, {"presentedFrames", overlay->presented_frames()},
-                {"droppedFrames", overlay->dropped_frames()}};
+                {"composed", composed}, {"camera", scene_has_camera}, {"cursor", scene_has_cursor}, {"click", scene_has_click},
+                {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}};
             if (const auto statistics = overlay->frame_statistics()) {
                 response["frameStatistics"] = json{{"presentCount", statistics->present_count},
                     {"presentRefreshCount", statistics->present_refresh_count},

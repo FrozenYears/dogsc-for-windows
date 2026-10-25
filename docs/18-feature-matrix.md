@@ -23,9 +23,9 @@
 | Preview | 媒体解码 | P2a 部分已验收：MF SourceReader 首帧、0.1s seek、EOF 明确错误，H.264/HEVC 320×200 CLI smoke；P2b 增加 SourceReader→FrameSceneEvaluator→D2D/WARP 单帧合成并通过 GUI 0s；损坏媒体/音画同步/连续播放未完成 | `tools/capture_cli/frame.cpp` + D2D + Tauri | xiaoying frame source | 首帧、seek、EOF、坏帧 |
 | Preview | 实时播放/拖动 | P2b partial：sidecar-owned WS_POPUP + DXGI flip-model swapchain/`Present(1,0)` 覆盖 WebView 预览图；FrameSceneEvaluator/D2D 输出纹理由同设备 `CopyResource` 直达 backbuffer；bounds 由 Tauri DOM/physical scale 驱动；DXGI mode 不经 PNG/image decode。SourceReader NV12 decoder surface 仍 staging→CPU YUV→BGRA upload；单飞请求、呈现 FPS、丢帧、背压及 `GetFrameStatistics` vblank counters 已接入；GUI smoke 已覆盖 move/resize、scroll hide/show、跨工程回收，短 H.264/HEVC 为 50–60 FPS、drop=0；长时60/120Hz、VRR、最小化/DPI、多 GPU、no-tear 与完整 timeline seek/暂停未验收 | D3D11/DXGI + playback clock | 两仓库 preview/transport | 长时 frame statistics、丢帧<2%、跨窗口/设备、capture-based no-tear |
 | Render | D2D/WARP 六层离屏 | 已实现，像素基准未完成 | `render/d2d` | 两仓库效果组织 | WARP 读回、PSNR 基准 |
-| Render | 光标/点击效果 | P3a 已接入 cursor size、click style/opacity/scale 控件并持久化；实际光标/点击帧合成仍部分 | cursor renderer | xiaoying cursors | 光标位置/热点/点击波纹 |
-| Render | 摄像头布局 | core/D2D 有部分 | compositor + inspector | adrian camera panel | 形状/镜像/阴影/缩放 |
-| Render | 背景/圆角/阴影/样机 | core/D2D 部分 | compositor | 两仓库 layout panels | 画布尺寸、裁切、颜色 |
+| Render | 光标/点击效果 | P3 preview 已接入 pointer.jsonl、系统光标事件、确定性箭头 fallback、click geometry 与 D2D cursor layer；GUI cursor/click smoke 通过；真实系统光标素材、高清资源与最终 export 未完成 | cursor track + D2D compositor + Tauri | 两仓库 cursor renderer | 光标位置/热点/点击波纹、导出复用 |
+| Render | 摄像头布局 | P3 preview 已接入可选 camera media、startOffset/sourceStartTime/sourceTimeScale 映射、FrameSceneEvaluator camera scene 与 D2D 圆角/边框/阴影/镜像；camera GUI smoke 通过；最终 export 与逐像素基准未完成 | MediaTimeline + camera reader + compositor | adrian camera panel | 形状/镜像/阴影/缩放、导出复用 |
+| Render | 背景/圆角/阴影/样机 | D2D background pattern、画布 padding、屏幕 chrome、圆角/边框/阴影已接入 preview scene；跨 preset 像素基准未完成 | compositor | 两仓库 layout panels | 画布尺寸、裁切、颜色、导出复用 |
 | Render | 模糊/spotlight/mosaic | P3a native mosaic blur/spotlight 区域和 intensity 已持久化；GUI 区域编辑与完整预览仍未接入 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜 |
 | Render | 贴图/层级/动画 | P3b GUI 已接入 relative-path、时间、位置、宽度贴图片段持久化；资源导入/预览层级/出入场动画未完成 | compositor + assets | 两仓库 sticker UI | 素材路径安全、层级/出入场 |
 | Render | 屏幕 3D/开场 | core 部分，GUI/预览未接 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界 |

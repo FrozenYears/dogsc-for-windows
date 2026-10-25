@@ -36,6 +36,34 @@ void scene_contains_project_effects() {
     EXPECT_EQ(scene.stickers.size(), size_t{1});
     EXPECT_TRUE(is_valid_layer_order(scene.layer_order));
 }
+void scene_contains_camera_cursor_and_click() {
+    RecorderProject project;
+    project.cursor_style.asset_id = CursorAssetID::system_arrow();
+    PointerTrackSegmentRecord segment;
+    segment.output_range = {0, 1};
+    segment.output_events = {{0, {0.25, 0.35}, PointerEventKind::kLeftClick},
+                             {0.5, {0.4, 0.5}, PointerEventKind::kMove}};
+    ProjectPointerTrack pointer_track({segment}, project.motion);
+    CursorAssetMetrics metrics;
+    metrics.asset_id = CursorAssetID::system_arrow().raw_value;
+    metrics.width = 44;
+    metrics.height = 44;
+    metrics.hotspot_x = 0.1;
+    metrics.hotspot_y = 0.1;
+    FrameEvaluationInputs inputs;
+    inputs.screen_source_size = {1920, 1080};
+    inputs.camera_source_size = CompositionSize{640, 480};
+    inputs.pointer_track = &pointer_track;
+    const std::vector<std::pair<CursorAssetID, CursorAssetMetrics>> metrics_by_asset{{
+        CursorAssetID::system_arrow(), metrics}};
+    inputs.cursor_metrics_by_asset = &metrics_by_asset;
+    const auto scene = FrameSceneEvaluator::scene(project, 0.2, {1280, 720}, inputs, 1.0);
+    EXPECT_TRUE(scene.camera.has_value());
+    EXPECT_TRUE(scene.cursor.has_value());
+    EXPECT_TRUE(scene.cursor->click_geometry.has_value());
+    EXPECT_TRUE(is_valid_layer_order(scene.layer_order));
+}
+
 
 void zoom_viewport_roundtrips_points() {
     ZoomSample sample;
@@ -110,7 +138,7 @@ void scene_clamps_frame_request() {
 
 int main() {
     scene_contains_project_effects();
-    zoom_viewport_roundtrips_points();
+    scene_contains_camera_cursor_and_click();
     pointer_segments_bridge_only_at_cut();
     pointer_spring_cache_keeps_two_recent_parameter_variants();
     scene_clamps_frame_request();

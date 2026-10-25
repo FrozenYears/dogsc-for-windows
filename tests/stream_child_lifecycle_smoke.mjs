@@ -1,7 +1,8 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
-import { existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 
 const [appArgument, projectAArgument, projectBArgument] = process.argv.slice(2);
@@ -18,11 +19,27 @@ function projectPath(value) {
 }
 
 const appPath = resolve(appArgument);
-const projectA = projectPath(projectAArgument);
+let projectA = projectPath(projectAArgument);
 const projectB = projectPath(projectBArgument);
-if (projectA.toLowerCase() === projectB.toLowerCase()) throw new Error("必须提供两个不同的工程文件");
+let temporaryProjectA = "";
+if (process.env.DOGSC_REQUIRE_CURSOR === "1") {
+  temporaryProjectA = mkdtempSync(join(tmpdir(), "dogsc-cursor-smoke-"));
+  const sourceProject = JSON.parse(readFileSync(projectA, "utf8"));
+  sourceProject.cursorStyle = { ...sourceProject.cursorStyle, assetID: "system.arrow" };
+  for (const reference of Object.values(sourceProject.media ?? {})) {
+    if (!reference?.relativePath) continue;
+    const source = resolve(projectA, "..", reference.relativePath);
+    copyFileSync(source, join(temporaryProjectA, reference.relativePath));
+  }
+  const pointerPath = join(temporaryProjectA, sourceProject.media.pointerEvents.relativePath);
+  const pointerText = readFileSync(pointerPath, "utf8").replaceAll("system.hidden", "system.arrow").replaceAll('"kind":"move"', '"kind":"leftClick"');
+  writeFileSync(pointerPath, pointerText);
+  writeFileSync(join(temporaryProjectA, "project.json"), JSON.stringify(sourceProject, null, 2));
+  projectA = join(temporaryProjectA, "project.json");
+}
 const titleA = JSON.parse(readFileSync(projectA, "utf8")).title;
 const titleB = JSON.parse(readFileSync(projectB, "utf8")).title;
+if (projectA.toLowerCase() === projectB.toLowerCase()) throw new Error("必须提供两个不同的工程文件");
 const port = await new Promise((resolvePort, rejectPort) => {
   const server = createServer();
   server.once("error", rejectPort);
@@ -149,16 +166,29 @@ try {
   await revealPreview();
   await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
   await waitForStream(projectA, true);
+  let previewStatusA = "";
   await waitFor("工程 A 的帧呈现统计", async () => {
     const status = await evaluateValue('document.querySelector("#project-preview-status").textContent');
     if (status.startsWith("预览失败") || status.startsWith("预览错误")) throw new Error(`工程 A 预览失败: ${status}`);
-    return status.includes("丢帧");
+    const ready = status.includes("丢帧") &&
+      (process.env.DOGSC_REQUIRE_CURSOR !== "1" || status.includes("click"));
+    if (ready) previewStatusA = status;
+    return ready;
   });
-  const previewStatusA = await evaluateValue('document.querySelector("#project-preview-status").textContent');
+  if (!previewStatusA) previewStatusA = await evaluateValue('document.querySelector("#project-preview-status").textContent');
   if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
       (!previewStatusA.includes("DXGI swapchain") || !previewStatusA.includes("D2D scene") || !previewStatusA.includes("vblank") ||
        await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
     throw new Error(`工程 A 未进入原生 D2D/DXGI presentation 或缺少 frame statistics: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_CAMERA === "1" && !previewStatusA.includes("camera")) {
+    throw new Error(`工程 A 未产生摄像头 scene 层: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_CURSOR === "1" && !previewStatusA.includes("cursor")) {
+    throw new Error(`工程 A 未产生光标 scene 层: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_CURSOR === "1" && !previewStatusA.includes("click")) {
+    throw new Error(`工程 A 未产生光标点击效果 scene: ${previewStatusA}`);
   }
   if (process.env.DOGSC_EXERCISE_WINDOW === "1") {
     const beforeWindow = windowCommand("get");
@@ -219,4 +249,5 @@ try {
   if (app.exitCode === null) {
     try { execFileSync("taskkill.exe", ["/T", "/F", "/PID", String(app.pid)], { stdio: "ignore" }); } catch {}
   }
+  if (temporaryProjectA) rmSync(temporaryProjectA, { recursive: true, force: true });
 }
