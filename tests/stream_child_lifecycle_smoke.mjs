@@ -141,8 +141,9 @@ try {
   });
   const previewStatusA = await evaluateValue('document.querySelector("#project-preview-status").textContent');
   if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
-      (!previewStatusA.includes("DXGI swapchain") || await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
-    throw new Error(`工程 A 未进入原生 DXGI swapchain presentation: ${previewStatusA}`);
+      (!previewStatusA.includes("DXGI swapchain") || !previewStatusA.includes("D2D scene") ||
+       await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
+    throw new Error(`工程 A 未进入原生 D2D/DXGI presentation: ${previewStatusA}`);
   }
 
   await openProject(projectB, titleB);
@@ -153,8 +154,9 @@ try {
   await waitFor("工程 B 的帧呈现统计", async () => await evaluateValue('document.querySelector("#project-preview-status").textContent.includes("背压")'));
   const previewStatus = await evaluateValue('document.querySelector("#project-preview-status").textContent');
   if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" &&
-      (!previewStatus.includes("DXGI swapchain") || await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
-    throw new Error(`工程 B 未进入原生 DXGI swapchain presentation: ${previewStatus}`);
+      (!previewStatus.includes("DXGI swapchain") || !previewStatus.includes("D2D scene") ||
+       await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
+    throw new Error(`工程 B 未进入原生 D2D/DXGI presentation: ${previewStatus}`);
   }
   if (!/帧 [1-9]\d*\/[1-9]\d*/.test(previewStatus) || !previewStatus.includes("丢帧")) {
     throw new Error(`没有取得已呈现帧统计: ${previewStatus}`);

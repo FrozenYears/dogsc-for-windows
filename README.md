@@ -8,9 +8,9 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 **移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染、P1a/P1b 项目生命周期、P2a/P2b 预览基础与 P4 视频导出 prototype 已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、语义 dirty draft、debounce 自动保存、flush/重试、discard/recovery、关闭确认、时间线编辑与多步历史；MF SourceReader 持久 stream、NV12 DXGI decoder surface ingress、sidecar DXGI flip-model overlay presentation、PNG fallback/static composite；单源 H.264 MP4 export prototype。
-- 已验证：Windows Release clean build；7/7 CTest；H.264/HEVC frame/seek/stream/EOF/D2D composite；真实 GUI dirty close/cancel/retry；跨工程 child 回收。打包 GUI DXGI overlay smoke：H.264 81fps、HEVC 72fps，6/6 frames presented、0 drops；短样本，不代表长时60Hz/no-tear验收。
-- 尚未完成：SourceReader DXGI texture 仍回读CPU后上传 overlay（非零拷贝）；PresentMon/长时60Hz/无撕裂/多 GPU 验收、完整拖动/暂停语义；实际光标/点击合成、摄像头完整布局、贴图资源渲染、屏幕 3D/运镜/开场；SourceReader 时间线音频/M4A 导出、取消/失败恢复；区域拖拽选择、权限/设置/托盘/语言/录制标记；长时4K60/跨设备与 FFmpeg LGPL 分发合规。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、语义 dirty draft、debounce 自动保存、flush/重试、discard/recovery、关闭确认、时间线编辑与多步历史；MF SourceReader 持久 stream、NV12 DXGI decoder ingress、FrameSceneEvaluator/D2D 实时合成、sidecar DXGI swapchain overlay、PNG fallback/static composite；单源 H.264 MP4 export prototype。
+- 已验证：Windows Release clean build；7/7 CTest；H.264/HEVC frame/seek/stream/EOF/D2D composite；真实 GUI dirty close/cancel/retry；跨工程 child 回收。打包 GUI D2D/DXGI smoke：H.264 67fps、HEVC 64fps，6/6 frames presented、0 drops；短样本，不代表长时60Hz/no-tear验收。
+- 尚未完成：SourceReader NV12 texture 仍 staging-readback→CPU YUV→BGRA upload 到 D2D 输入（D2D 输出纹理通过同设备 `CopyResource` 直达 swapchain；非零拷贝）；PresentMon/长时60Hz/无撕裂/多 GPU 验收、完整拖动/暂停语义；实际光标/点击合成、摄像头完整布局、贴图资源渲染、屏幕 3D/运镜/开场；SourceReader 时间线音频/M4A 导出、取消/失败恢复；区域拖拽选择、权限/设置/托盘/语言/录制标记；长时4K60/跨设备与 FFmpeg LGPL 分发合规。
 
 ## 决策基线
 

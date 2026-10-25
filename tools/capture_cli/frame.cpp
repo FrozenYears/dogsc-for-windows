@@ -497,6 +497,25 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             std::cerr << "DXGI overlay initialization failed; using WebView PNG fallback: " << error.what() << '\n';
         }
     }
+    RecorderProject project;
+    double duration = 0;
+    std::unique_ptr<D2DFrameCompositor> compositor;
+    if (overlay) {
+        try {
+            project = load_project(normalized);
+            if (!project.media || !project.media->screen.source_end_time) {
+                throw std::runtime_error("工程缺少屏幕媒体时长");
+            }
+            duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
+            if (!std::isfinite(duration) || duration <= 0) throw std::runtime_error("屏幕媒体时长无效");
+            std::string error;
+            compositor = D2DFrameCompositor::create(overlay->device(), error);
+            if (!compositor) throw std::runtime_error(error);
+        } catch (const std::exception& error) {
+            std::cerr << "D2D preview initialization failed; using source frames: " << error.what() << '\n';
+            compositor.reset();
+        }
+    }
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line == "Q") break;
@@ -533,7 +552,30 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             auto pixels = reader.read_bgra(static_cast<std::int64_t>(seconds * 10000000),
                 max_width, width, height, true);
             bool presented = false;
-            try { presented = overlay->present(pixels, width, height); }
+            bool composed = false;
+            if (compositor) {
+                try {
+                    const auto texture = texture_from_bgra(overlay->device(), overlay->context(),
+                        pixels, width, height);
+                    const auto plan = FrameSceneEvaluator::render_plan(project, seconds, duration,
+                        project.export_settings.frame_rate,
+                        CompositionSize{static_cast<double>(width), static_cast<double>(height)});
+                    FrameRenderResources resources;
+                    resources.screen = texture.get();
+                    if (!compositor->compose(plan, resources)) {
+                        throw std::runtime_error(std::string(compositor->last_error()));
+                    }
+                    composed = true;
+                } catch (const std::exception& error) {
+                    std::cerr << "D2D preview composition failed; using source frame: " << error.what() << '\n';
+                    compositor.reset();
+                }
+            }
+            try {
+                presented = composed
+                    ? overlay->present_texture(compositor->output_texture())
+                    : overlay->present(pixels, width, height);
+            }
             catch (const std::exception& error) {
                 std::cerr << "DXGI overlay presentation failed; using WebView PNG fallback: " << error.what() << '\n';
                 overlay.reset();
@@ -547,6 +589,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             std::cout << json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
+                {"composed", composed},
                 {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}}.dump()
                 << '\n' << std::flush;
         } catch (const std::exception& error) {

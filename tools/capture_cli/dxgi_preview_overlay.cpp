@@ -150,6 +150,44 @@ struct DxgiPreviewOverlay::Impl {
         pump_messages();
         return true;
     }
+    bool present_texture(ID3D11Texture2D* texture) {
+        if (!texture) throw std::invalid_argument("DXGI preview texture 为空");
+        D3D11_TEXTURE2D_DESC description{};
+        texture->GetDesc(&description);
+        if (description.Format != DXGI_FORMAT_B8G8R8A8_UNORM || description.SampleDesc.Count != 1) {
+            throw std::invalid_argument("DXGI preview texture 必须是单采样 BGRA8");
+        }
+        com_ptr<ID3D11Device> source_device;
+        texture->GetDevice(source_device.put());
+        if (source_device.get() != device.get()) throw std::invalid_argument("DXGI preview texture 设备不匹配");
+        pump_messages();
+        if (!visible) {
+            ++dropped;
+            return false;
+        }
+        if (!swapchain || description.Width != buffer_width || description.Height != buffer_height) {
+            create_swapchain(description.Width, description.Height);
+        }
+        const HRESULT test = swapchain->Present(0, DXGI_PRESENT_TEST);
+        if (test == DXGI_STATUS_OCCLUDED) {
+            ++dropped;
+            return false;
+        }
+        check(test, "Test preview DXGI visibility");
+        com_ptr<ID3D11Texture2D> backbuffer;
+        check(swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), backbuffer.put_void()),
+            "Get preview swapchain backbuffer");
+        context->CopyResource(backbuffer.get(), texture);
+        const HRESULT result = swapchain->Present(1, 0);
+        if (result == DXGI_STATUS_OCCLUDED) {
+            ++dropped;
+            return false;
+        }
+        check(result, "Present preview swapchain");
+        ++presented;
+        pump_messages();
+        return true;
+    }
 };
 
 DxgiPreviewOverlay::DxgiPreviewOverlay(std::uintptr_t owner_window)
@@ -161,6 +199,11 @@ void DxgiPreviewOverlay::set_bounds(int x, int y, int width, int height, bool vi
 bool DxgiPreviewOverlay::present(const std::vector<std::uint8_t>& pixels,
                                  std::uint32_t width, std::uint32_t height) {
     return impl_->present(pixels, width, height);
+}
+ID3D11Device* DxgiPreviewOverlay::device() const { return impl_->device.get(); }
+ID3D11DeviceContext* DxgiPreviewOverlay::context() const { return impl_->context.get(); }
+bool DxgiPreviewOverlay::present_texture(ID3D11Texture2D* texture) {
+    return impl_->present_texture(texture);
 }
 std::uint64_t DxgiPreviewOverlay::presented_frames() const { return impl_->presented; }
 std::uint64_t DxgiPreviewOverlay::dropped_frames() const { return impl_->dropped; }
