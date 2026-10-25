@@ -34,8 +34,8 @@
 | Export | 进度/取消/重试 | P4 partial：progress JSON、`.partial` 原子收尾、Tauri 取消按钮、sidecar cleanup-output、invalid-path failure cleanup、MP4/M4A cancel smoke 已通过；失败重试与长时压力未完成 | Tauri orchestration + sidecar | adrian export dialog | 取消后无最终半成品、失败清理、重试 |
 | Shell | Tauri 录制壳 | 已验收 | `apps/tauri` | xiaoying Electron UI 仅作交互参照 | 安装包真实 GUI |
 | Shell | 中文基础界面 | 已实现部分 | Tauri | 两仓库布局/检查器 | UI smoke |
-| Shell | 英文/本地化切换 | 未实现 | localization | xiaoying localization | 运行时切换 |
-| Shell | 设置/权限/托盘/备忘录/标记 | P5 partial：显示器/窗口枚举、源切换、区域参数与 WebView region picker、settings modal、recording marker、Tauri native tray 已接入；权限向导、备忘录浮窗、DPI/多显示器 picker、语言切换仍未完成 | Tauri/Win32 + project model | adrian dialogs/memo | 权限失败、托盘、设置持久化、多显示器区域、marker 重开 |
+| Shell | 英文/本地化切换 | P5 partial：settings modal 已提供简体中文/English preference、核心 toolbar/action labels 可运行时切换并持久化；完整界面翻译与资源本地化未完成 | localization + Tauri | xiaoying localization | 运行时切换、重启保留 |
+| Shell | 设置/权限/托盘/备忘录/标记 | P5 partial：显示器/窗口枚举、源切换、区域参数与 WebView region picker、settings modal、recording marker、Tauri native tray 已接入；权限向导、备忘录浮窗、DPI/多显示器 picker 仍未完成 | Tauri/Win32 + project model | adrian dialogs/memo | 权限失败、托盘、设置持久化、多显示器区域、marker 重开 |
 | Release | FFmpeg 动态 LGPL | 当前配置部分满足 | CMake/vcpkg/package | 不复制 adrian GPL 包 | DLL、源码、补丁、NOTICE 审计 |
 | Release | 长时/跨硬件 | 未完成 | capture/export | 两仓库测试矩阵思路 | 4K60、混合显卡、休眠恢复 |
 

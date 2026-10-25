@@ -914,17 +914,39 @@ function openRegionPicker() {
   modal.querySelector(".region-apply")?.addEventListener("click", () => { region.value = `${Math.round(rect.x * sourceWidth)},${Math.round(rect.y * sourceHeight)},${Math.round(rect.width * sourceWidth)},${Math.round(rect.height * sourceHeight)}`; close(); });
 }
 
+function applyLocale(locale: string) {
+  const english = locale === "en-US";
+  document.documentElement.lang = english ? "en" : "zh-CN";
+  const text: Record<string, string> = english ? {
+    "rail-projects": "Projects", "project-open": "Open", "project-rename": "Rename", "style-apply": "Apply",
+    "mosaic-apply": "Add", "sticker-apply": "Add", "screen-motion-apply": "Add motion", "edit-marker": "Marker",
+    "project-save": "Save", "project-discard": "Discard", "project-undo": "Undo", "project-redo": "Redo",
+    "project-export": "Export", "project-export-cancel": "Cancel",
+  } : {
+    "rail-projects": "项目", "project-open": "打开", "project-rename": "重命名", "style-apply": "应用",
+    "mosaic-apply": "添加", "sticker-apply": "添加", "screen-motion-apply": "添加运镜", "edit-marker": "标记",
+    "project-save": "保存", "project-discard": "放弃", "project-undo": "撤销", "project-redo": "重做",
+    "project-export": "导出", "project-export-cancel": "取消",
+  };
+  for (const [id, label] of Object.entries(text)) { const element = document.getElementById(id); if (element) element.textContent = label; }
+  const railLabels = Array.from(document.querySelectorAll<HTMLElement>(".rail-item span:last-child"));
+  if (railLabels.length >= 3) ["录制", english ? "Projects" : "项目", english ? "Assets" : "素材"].forEach((label, index) => { railLabels[index].textContent = english ? ["Record", "Projects", "Assets"][index] : label; });
+}
+
 function openSettings() {
   if (document.querySelector(".settings-modal-backdrop")) return;
   const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}");
   const modal = document.createElement("div");
   modal.className = "settings-modal-backdrop";
-  modal.innerHTML = `<div class="settings-modal" role="dialog" aria-label="设置"><div class="region-modal-heading"><strong>设置</strong><button type="button" class="icon-button small settings-close">×</button></div><div class="settings-modal-body"><label class="field"><span>默认帧率</span><select class="settings-fps"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option></select></label><label class="field"><span>默认输出目录</span><input class="settings-directory" type="text" /></label><div class="settings-permission"><strong>运行时能力</strong><span>Windows Graphics Capture、Media Foundation、WASAPI</span><small>权限会在首次使用对应功能时由系统返回结果。</small><button type="button" class="secondary compact settings-check">检查采集能力</button><span class="settings-check-result"></span></div></div><div class="region-modal-footer"><span class="region-readout">偏好设置保存在本机</span><button type="button" class="primary settings-save">完成</button></div></div>`;
+  modal.innerHTML = `<div class="settings-modal" role="dialog" aria-label="设置"><div class="region-modal-heading"><strong>设置</strong><button type="button" class="icon-button small settings-close">×</button></div><div class="settings-modal-body"><label class="field"><span>界面语言</span><select class="settings-language"><option value="zh-CN">简体中文</option><option value="en-US">English</option></select></label><label class="field"><span>默认帧率</span><select class="settings-fps"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option></select></label><label class="field"><span>默认输出目录</span><input class="settings-directory" type="text" /></label><div class="settings-permission"><strong>运行时能力</strong><span>Windows Graphics Capture、Media Foundation、WASAPI</span><small>权限会在首次使用对应功能时由系统返回结果。</small><button type="button" class="secondary compact settings-check">检查采集能力</button><span class="settings-check-result"></span></div></div><div class="region-modal-footer"><span class="region-readout">偏好设置保存在本机</span><button type="button" class="primary settings-save">完成</button></div></div>`;
   document.body.append(modal);
+  const languageInput = modal.querySelector<HTMLSelectElement>(".settings-language")!;
   const fpsInput = modal.querySelector<HTMLSelectElement>(".settings-fps")!;
   const directoryInput = modal.querySelector<HTMLInputElement>(".settings-directory")!;
+  languageInput.value = String(saved.language ?? "zh-CN");
   fpsInput.value = String(saved.defaultFps ?? fps.value);
   directoryInput.value = String(saved.directory ?? directory.value);
+  applyLocale(languageInput.value);
   const close = () => modal.remove();
   modal.querySelector(".settings-close")?.addEventListener("click", close);
   modal.querySelector(".settings-check")?.addEventListener("click", async () => {
@@ -938,8 +960,9 @@ function openSettings() {
     }
   });
   modal.querySelector(".settings-save")?.addEventListener("click", () => {
-    const preferences = { defaultFps: Number(fpsInput.value), directory: directoryInput.value.trim() };
+    const preferences = { language: languageInput.value, defaultFps: Number(fpsInput.value), directory: directoryInput.value.trim() };
     localStorage.setItem("dogsc.preferences", JSON.stringify(preferences));
+    applyLocale(preferences.language);
     fps.value = String(preferences.defaultFps);
     if (preferences.directory) { directory.value = preferences.directory; libraryRoot.value = preferences.directory; }
     close();
@@ -1276,7 +1299,7 @@ void getCurrentWindow().onCloseRequested(async (event) => {
     closeConfirmationInProgress = false;
   }
 });
-void defaultDirectory().then((value) => { const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}"); directory.value = saved.directory ?? value; libraryRoot.value = saved.directory ?? value; if (saved.defaultFps) fps.value = String(saved.defaultFps); });
+void defaultDirectory().then((value) => { const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}"); directory.value = saved.directory ?? value; libraryRoot.value = saved.directory ?? value; if (saved.defaultFps) fps.value = String(saved.defaultFps); applyLocale(saved.language ?? "zh-CN"); });
 captureMode.addEventListener("change", updateCaptureMode);
 regionPick.addEventListener("click", openRegionPicker);
 settingsButton.addEventListener("click", openSettings);
