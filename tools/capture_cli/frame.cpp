@@ -466,22 +466,39 @@ private:
 void write_audio_track(capture::MediaWriter& writer, const AudioReader& audio,
                        const TimelineMediaPlan& plan, double source_start, std::size_t track) {
     constexpr double kAudioScaleEpsilon = 1e-9;
+    const auto* source = reinterpret_cast<const float*>(audio.bytes().data());
     for (const auto& slice : plan.slices()) {
-        if (std::abs(slice.source_time_scale - 1.0) > kAudioScaleEpsilon) {
-            throw std::runtime_error("音频映射暂不支持非 1x 播放速度");
-        }
-        const auto source_frame = static_cast<std::int64_t>(std::llround(
+        const double source_frame_position =
             (slice.source_start - source_start -
-             static_cast<double>(audio.first_timestamp()) / 10000000.0) * AudioReader::kSampleRate));
+             static_cast<double>(audio.first_timestamp()) / 10000000.0) * AudioReader::kSampleRate;
         const auto output_frames = static_cast<std::uint32_t>(std::llround(
             slice.duration * AudioReader::kSampleRate));
-        if (source_frame < 0 || static_cast<std::uint64_t>(source_frame) + output_frames > audio.frames()) {
+        const double source_end = source_frame_position + output_frames * slice.source_time_scale;
+        if (source_frame_position < 0 || source_end < source_frame_position ||
+            static_cast<std::uint64_t>(std::ceil(source_end)) + 1 > audio.frames()) {
             throw std::runtime_error("音频时间线超出可读取样本范围");
         }
-        const auto* bytes = audio.bytes().data() +
-            static_cast<std::size_t>(source_frame) * AudioReader::kBlockAlignment;
-        writer.write_audio(track, bytes, output_frames,
-            static_cast<std::int64_t>(slice.output_start * 10000000));
+        if (std::abs(slice.source_time_scale - 1.0) <= kAudioScaleEpsilon) {
+            const auto source_frame = static_cast<std::size_t>(std::llround(source_frame_position));
+            writer.write_audio(track, audio.bytes().data() + source_frame * AudioReader::kBlockAlignment,
+                output_frames, static_cast<std::int64_t>(slice.output_start * 10000000));
+            continue;
+        }
+        std::vector<float> resampled(static_cast<std::size_t>(output_frames) * AudioReader::kChannels);
+        for (std::uint32_t frame = 0; frame < output_frames; ++frame) {
+            const double position = source_frame_position + frame * slice.source_time_scale;
+            const auto lower = static_cast<std::size_t>(std::floor(position));
+            const auto upper = std::min(lower + 1, static_cast<std::size_t>(audio.frames() - 1));
+            const float fraction = static_cast<float>(position - lower);
+            for (std::uint16_t channel = 0; channel < AudioReader::kChannels; ++channel) {
+                const float a = source[lower * AudioReader::kChannels + channel];
+                const float b = source[upper * AudioReader::kChannels + channel];
+                resampled[static_cast<std::size_t>(frame) * AudioReader::kChannels + channel] =
+                    a + (b - a) * fraction;
+            }
+        }
+        writer.write_audio(track, reinterpret_cast<const std::uint8_t*>(resampled.data()),
+            output_frames, static_cast<std::int64_t>(slice.output_start * 10000000));
     }
 }
 
