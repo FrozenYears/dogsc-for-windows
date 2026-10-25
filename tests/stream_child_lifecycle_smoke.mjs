@@ -226,6 +226,7 @@ try {
     await evaluateValue('document.querySelector("#settings-button").click(); true');
     await waitFor("language preference persisted", async () => await evaluateValue('document.querySelector(".settings-language").value === "en-US"'));
     await evaluateValue('document.querySelector(".settings-close").click(); true');
+    await waitFor("English shell labels", async () => await evaluateValue('document.querySelector("#project-open").textContent === "Open" && document.querySelector("#directory").parentElement.querySelector("span").textContent === "Output directory" && document.querySelector("#memo-button").textContent === "Memo"'));
   }
   if (process.env.DOGSC_EXERCISE_REGION === "1") {
     await evaluateValue('document.querySelector("#region-pick").click(); true');
@@ -238,7 +239,7 @@ try {
   if (process.env.DOGSC_EXERCISE_SCENE_CONTROLS === "1") {
     await evaluateValue('(()=>{document.querySelector("#style-screen-frame").value="browserDark";document.querySelector("#style-screen-motion").value="平滑";document.querySelector("#style-cursor-motion").value="适中";document.querySelector("#style-opening-enabled").checked=true;document.querySelector("#style-opening-preset").value="侧滑";document.querySelector("#style-opening-duration").value="1.2";document.querySelector("#style-apply").click();return true})()');
     await waitFor("scene styles 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
-    await evaluateValue('(()=>{document.querySelector("#screen-motion-geometry").value="0.5,0.5,1.2,6,-4,0,0.65";document.querySelector("#screen-motion-apply").click();return true})()');
+    await evaluateValue('(()=>{const p=document.querySelector("#screen-motion-geometry-visible");p.value="0.5,0.5,1.2,6,-4,0,0.65";p.dispatchEvent(new Event("input",{bubbles:true}));document.querySelector("#screen-motion-apply").click();return true})()');
     await waitFor("screen motion clip 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
   }
   if (process.env.DOGSC_EXERCISE_MARKER === "1") {

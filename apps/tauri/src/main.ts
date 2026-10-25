@@ -149,7 +149,7 @@ app.innerHTML = `
             <div class="timeline-head"><strong>时间线</strong><span class="timeline-save-label">保存状态在窗口顶部</span><div class="project-history-actions"><button id="edit-marker" class="secondary compact" type="button" disabled>标记</button><button id="project-save" class="secondary compact" type="button" disabled>保存</button><button id="project-discard" class="secondary danger compact" type="button" disabled>放弃</button><button id="project-undo" class="secondary compact" type="button" disabled>撤销</button><button id="project-redo" class="secondary compact" type="button" disabled>重做</button></div></div>
             <div id="timeline" class="timeline"><span class="timeline-empty">打开工程后开始编辑</span></div>
             <div class="timeline-edit-row"><label class="field"><span>当前片段</span><select id="edit-segment"><option value="">未选择</option></select></label><label class="field"><span>速度</span><input id="edit-rate" type="number" min="1" max="100" step="0.1" value="1" /></label><div class="editor-actions"><button id="edit-split" class="secondary compact" type="button" disabled>分割</button><button id="edit-trim-left" class="secondary compact" type="button" disabled>左裁切</button><button id="edit-trim-right" class="secondary compact" type="button" disabled>右裁切</button><button id="edit-rate-button" class="secondary compact" type="button" disabled>应用速度</button><button id="edit-move-up" class="secondary compact" type="button" disabled>上移</button><button id="edit-move-down" class="secondary compact" type="button" disabled>下移</button><button id="edit-remove" class="secondary danger compact" type="button" disabled>删除</button></div></div>
-            <div class="timeline-actions"><label class="field"><span>运镜</span><input id="screen-motion-start" type="hidden" value="0" /><input id="screen-motion-duration" type="hidden" value="1" /><input id="screen-motion-geometry" type="hidden" value="0.5,0.5,1.2,0,0,0,0.65" /></label><button id="screen-motion-apply" class="secondary compact" type="button" disabled>添加运镜</button><span id="project-console" class="project-console" aria-live="polite"><span class="console-line muted">等待打开工程……</span></span></div>
+            <div class="timeline-actions"><div class="screen-motion-fields"><label class="field"><span>运镜开始</span><input id="screen-motion-start-visible" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>运镜时长</span><input id="screen-motion-duration-visible" type="number" min="0.01" step="0.01" value="1" /></label><label class="field screen-motion-geometry-field"><span>3D 几何（x,y,scale,rx,ry,rz,perspective）</span><input id="screen-motion-geometry-visible" type="text" value="0.5,0.5,1.2,0,0,0,0.65" spellcheck="false" /></label></div><input id="screen-motion-start" type="hidden" value="0" /><input id="screen-motion-duration" type="hidden" value="1" /><input id="screen-motion-geometry" type="hidden" value="0.5,0.5,1.2,0,0,0,0.65" /><button id="screen-motion-apply" class="secondary compact" type="button" disabled>添加运镜</button><span id="project-console" class="project-console" aria-live="polite"><span class="console-line muted">等待打开工程……</span></span></div>
           </section>
         </section>
       </section>
@@ -234,6 +234,9 @@ const styleOpeningDuration = $("style-opening-duration") as HTMLInputElement;
 const screenMotionStart = $("screen-motion-start") as HTMLInputElement;
 const screenMotionDuration = $("screen-motion-duration") as HTMLInputElement;
 const screenMotionGeometry = $("screen-motion-geometry") as HTMLInputElement;
+const screenMotionStartVisible = $("screen-motion-start-visible") as HTMLInputElement;
+const screenMotionDurationVisible = $("screen-motion-duration-visible") as HTMLInputElement;
+const screenMotionGeometryVisible = $("screen-motion-geometry-visible") as HTMLInputElement;
 const screenMotionApply = $("screen-motion-apply") as HTMLButtonElement;
 const mosaicStart = $("mosaic-start") as HTMLInputElement;
 const mosaicDuration = $("mosaic-duration") as HTMLInputElement;
@@ -1003,6 +1006,28 @@ function applyLocale(locale: string) {
     "project-export": "导出", "project-export-cancel": "取消",
   };
   for (const [id, label] of Object.entries(text)) { const element = document.getElementById(id); if (element) element.textContent = label; }
+  const labelText = english ? {
+    directory: "Output directory", "capture-mode": "Capture source", monitor: "Display", "window-target": "Window", fps: "Frame rate", codec: "Encoder", region: "Region (x,y,width,height)", duration: "Duration (seconds)",
+    "project-path": "Project", "project-rename-name": "Project name", "library-root": "Project library", "edit-segment": "Current segment", "edit-rate": "Speed", "project-export-format": "Format", "project-export-path": "Export",
+    "style-background": "Background", "style-padding": "Padding", "style-screen-frame": "Device frame", "style-camera-size": "Camera size", "style-cursor-effect": "Click effect", "style-cursor-opacity": "Opacity", "style-cursor-scale": "Scale", "style-cursor-size": "Size", "style-camera-shape": "Camera shape", "style-screen-motion": "Screen motion", "style-cursor-motion": "Cursor motion", "style-opening-preset": "Style", "style-opening-duration": "Duration", "screen-motion-start-visible": "Motion start", "screen-motion-duration-visible": "Motion duration", "screen-motion-geometry-visible": "3D geometry (x,y,scale,rx,ry,rz,perspective)",
+  } : {
+    directory: "输出目录", "capture-mode": "采集源", monitor: "显示器", "window-target": "窗口", fps: "帧率", codec: "编码器", region: "区域（x,y,width,height）", duration: "时长（秒）",
+    "project-path": "工程", "project-rename-name": "工程名称", "library-root": "项目库目录", "edit-segment": "当前片段", "edit-rate": "速度", "project-export-format": "格式", "project-export-path": "导出",
+    "style-background": "背景", "style-padding": "留白", "style-screen-frame": "样机", "style-camera-size": "摄像头尺寸", "style-cursor-effect": "点击效果", "style-cursor-opacity": "透明度", "style-cursor-scale": "缩放", "style-cursor-size": "尺寸", "style-camera-shape": "摄像头形状", "style-screen-motion": "屏幕运镜", "style-cursor-motion": "光标运镜", "style-opening-preset": "样式", "style-opening-duration": "时长", "screen-motion-start-visible": "运镜开始", "screen-motion-duration-visible": "运镜时长", "screen-motion-geometry-visible": "3D 几何（x,y,scale,rx,ry,rz,perspective）",
+  };
+  for (const [id, captionText] of Object.entries(labelText)) {
+    const control = document.getElementById(id);
+    const caption = control?.closest("label")?.querySelector<HTMLElement>(":scope > span");
+    if (caption) caption.textContent = captionText;
+  }
+  const buttonText = english ? {
+    start: "Start recording", pause: "Pause", stop: "Stop and save", "project-open": "Open", "project-rename": "Rename", "library-refresh": "Refresh", "project-preview-frame": "Preview frame", "project-preview-play": "Play", "project-save": "Save", "project-discard": "Discard", "project-undo": "Undo", "project-redo": "Redo", "project-export": "Export", "project-export-cancel": "Cancel", "edit-split": "Split", "edit-trim-left": "Trim left", "edit-trim-right": "Trim right", "edit-rate-button": "Apply speed", "edit-move-up": "Move up", "edit-move-down": "Move down", "edit-remove": "Remove", "style-apply": "Apply", "mosaic-apply": "Add", "sticker-apply": "Add", "screen-motion-apply": "Add motion", "edit-marker": "Marker"
+  } : {
+    start: "开始录制", pause: "暂停", stop: "停止并保存", "project-open": "打开", "project-rename": "重命名", "library-refresh": "刷新", "project-preview-frame": "预览当前帧", "project-preview-play": "播放", "project-save": "保存", "project-discard": "放弃", "project-undo": "撤销", "project-redo": "重做", "project-export": "导出", "project-export-cancel": "取消", "edit-split": "分割", "edit-trim-left": "左裁切", "edit-trim-right": "右裁切", "edit-rate-button": "应用速度", "edit-move-up": "上移", "edit-move-down": "下移", "edit-remove": "删除", "style-apply": "应用", "mosaic-apply": "添加", "sticker-apply": "添加", "screen-motion-apply": "添加运镜", "edit-marker": "标记"
+  };
+  for (const [id, buttonLabel] of Object.entries(buttonText)) { const element = document.getElementById(id); if (element) element.textContent = buttonLabel; }
+  const toggleLabels = english ? ["System audio", "Microphone", "Camera"] : ["系统声音", "麦克风", "摄像头"];
+  document.querySelectorAll<HTMLElement>(".toggle-row label").forEach((label, index) => { const caption = label.querySelector<HTMLElement>("span:last-child"); if (caption) caption.textContent = toggleLabels[index] ?? caption.textContent; });
   const railLabels = Array.from(document.querySelectorAll<HTMLElement>(".rail-item span:last-child"));
   if (railLabels.length >= 3) ["录制", english ? "Projects" : "项目", english ? "Assets" : "素材"].forEach((label, index) => { railLabels[index].textContent = english ? ["Record", "Projects", "Assets"][index] : label; });
 }
@@ -1284,6 +1309,9 @@ async function applyMarker() {
 
 async function applyScreenMotion() {
   if (!projectFile) return;
+  screenMotionStart.value = screenMotionStartVisible.value;
+  screenMotionDuration.value = screenMotionDurationVisible.value;
+  screenMotionGeometry.value = screenMotionGeometryVisible.value;
   const values = screenMotionGeometry.value.split(",").map((value) => Number(value.trim()));
   if (values.length !== 7 || values.some((value) => !Number.isFinite(value))) {
     projectLog("运镜几何必须是 x,y,scale,rotation-x,rotation-y,rotation-z,perspective", false);
