@@ -206,6 +206,12 @@ try {
     socket.addEventListener("error", rejectSocket, { once: true });
   });
   await waitFor("Tauri 工程控件就绪", async () => await evaluateValue('Boolean(document.querySelector("#project-path") && document.querySelector("#project-preview-play"))'));
+  if (process.env.DOGSC_EXERCISE_REGION === "1") {
+    await evaluateValue('document.querySelector("#region-pick").click(); true');
+    await waitFor("区域选择器打开", async () => await evaluateValue('Boolean(document.querySelector(".region-surface"))'));
+    await evaluateValue('(()=>{const s=document.querySelector(".region-surface"),r=s.getBoundingClientRect();const a={bubbles:true,clientX:r.left+r.width*.2,clientY:r.top+r.height*.2,pointerId:1};s.dispatchEvent(new PointerEvent("pointerdown",a));s.dispatchEvent(new PointerEvent("pointermove",{...a,clientX:r.left+r.width*.8,clientY:r.top+r.height*.75}));s.dispatchEvent(new PointerEvent("pointerup",{...a,clientX:r.left+r.width*.8,clientY:r.top+r.height*.75}));document.querySelector(".region-apply").click();return true})()');
+    await waitFor("区域选择器写入参数", async () => await evaluateValue('document.querySelector("#region").value.split(",").length === 4'));
+  }
 
   await openProject(projectA, titleA);
   if (process.env.DOGSC_EXERCISE_SCENE_CONTROLS === "1") {

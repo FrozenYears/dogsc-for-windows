@@ -106,7 +106,7 @@ app.innerHTML = `
             <label class="field"><span>窗口</span><select id="window-target" disabled><option value="">没有窗口</option></select></label>
             <label class="field"><span>帧率</span><select id="fps"><option>30</option><option selected>60</option><option>90</option><option>120</option></select></label>
             <label class="field"><span>编码器</span><select id="codec"><option value="auto" selected>自动选择</option><option value="hevc">HEVC</option><option value="h264">H.264</option><option value="prores">ProRes 422</option></select></label>
-            <label class="field capture-wide"><span>区域（可选，x,y,width,height）</span><input id="region" type="text" spellcheck="false" placeholder="整块显示器" /></label>
+            <label class="field capture-wide"><span>区域（x,y,width,height）</span><div class="region-control"><input id="region" type="text" spellcheck="false" placeholder="整块显示器" /><button id="region-pick" class="secondary compact" type="button">选择区域</button></div></label>
             <label class="field"><span>时长（秒）</span><input id="duration" type="number" min="0" step="1" placeholder="手动停止" /></label>
           </div>
           <div class="toggle-row"><label><input id="system-audio" type="checkbox" checked /><span class="toggle"></span><span>系统声音</span></label><label><input id="microphone" type="checkbox" /><span class="toggle"></span><span>麦克风</span></label><label><input id="camera" type="checkbox" /><span class="toggle"></span><span>摄像头</span></label></div>
@@ -157,6 +157,7 @@ const monitor = $("monitor") as HTMLSelectElement;
 const region = $("region") as HTMLInputElement;
 const captureMode = $("capture-mode") as HTMLSelectElement;
 const windowTarget = $("window-target") as HTMLSelectElement;
+const regionPick = $("region-pick") as HTMLButtonElement;
 const fps = $("fps") as HTMLSelectElement;
 const codec = $("codec") as HTMLSelectElement;
 const duration = $("duration") as HTMLInputElement;
@@ -880,6 +881,36 @@ function updateCaptureMode() {
   region.disabled = isWindow;
   windowTarget.disabled = !isWindow;
 }
+function openRegionPicker() {
+  if (captureMode.value === "window") { projectLog("窗口源不需要区域选择", true); return; }
+  const dimensions = monitor.selectedOptions[0]?.textContent?.match(/(\d+)×(\d+)/);
+  const sourceWidth = Number(dimensions?.[1] ?? 1920);
+  const sourceHeight = Number(dimensions?.[2] ?? 1080);
+  const modal = document.createElement("div");
+  modal.className = "region-modal-backdrop";
+  modal.innerHTML = `<div class="region-modal" role="dialog" aria-label="选择录制区域"><div class="region-modal-heading"><strong>选择录制区域</strong><button type="button" class="icon-button small region-close">×</button></div><div class="region-surface"><div class="region-selection"></div></div><div class="region-modal-footer"><span class="region-readout">拖动选取区域</span><div><button type="button" class="secondary compact region-full">整块显示器</button><button type="button" class="primary compact region-apply">使用区域</button></div></div></div>`;
+  document.body.append(modal);
+  const surface = modal.querySelector<HTMLElement>(".region-surface")!;
+  const selection = modal.querySelector<HTMLElement>(".region-selection")!;
+  const readout = modal.querySelector<HTMLElement>(".region-readout")!;
+  let start: { x: number; y: number } | null = null;
+  let rect = { x: 0.1, y: 0.1, width: 0.8, height: 0.8 };
+  const update = (next: typeof rect) => {
+    rect = { x: Math.max(0, Math.min(1, next.x)), y: Math.max(0, Math.min(1, next.y)), width: Math.max(0.02, Math.min(1, next.width)), height: Math.max(0.02, Math.min(1, next.height)) };
+    selection.style.left = `${rect.x * 100}%`; selection.style.top = `${rect.y * 100}%`;
+    selection.style.width = `${rect.width * 100}%`; selection.style.height = `${rect.height * 100}%`;
+    readout.textContent = `${Math.round(rect.x * sourceWidth)}, ${Math.round(rect.y * sourceHeight)}, ${Math.round(rect.width * sourceWidth)}, ${Math.round(rect.height * sourceHeight)}`;
+  };
+  update(rect);
+  surface.addEventListener("pointerdown", (event) => { const bounds = surface.getBoundingClientRect(); start = { x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height }; surface.setPointerCapture(event.pointerId); update({ x: start.x, y: start.y, width: 0.02, height: 0.02 }); });
+  surface.addEventListener("pointermove", (event) => { if (!start) return; const bounds = surface.getBoundingClientRect(); const x = (event.clientX - bounds.left) / bounds.width; const y = (event.clientY - bounds.top) / bounds.height; update({ x: Math.min(start.x, x), y: Math.min(start.y, y), width: Math.abs(x - start.x), height: Math.abs(y - start.y) }); });
+  surface.addEventListener("pointerup", () => { start = null; });
+  const close = () => modal.remove();
+  modal.querySelector(".region-close")?.addEventListener("click", close);
+  modal.querySelector(".region-full")?.addEventListener("click", () => update({ x: 0, y: 0, width: 1, height: 1 }));
+  modal.querySelector(".region-apply")?.addEventListener("click", () => { region.value = `${Math.round(rect.x * sourceWidth)},${Math.round(rect.y * sourceHeight)},${Math.round(rect.width * sourceWidth)},${Math.round(rect.height * sourceHeight)}`; close(); });
+}
+
 
 async function refreshTargets() {
   try {
@@ -1204,6 +1235,7 @@ void getCurrentWindow().onCloseRequested(async (event) => {
 });
 void defaultDirectory().then((value) => { directory.value = value; libraryRoot.value = value; });
 captureMode.addEventListener("change", updateCaptureMode);
+regionPick.addEventListener("click", openRegionPicker);
 updateCaptureMode();
 void refreshTargets();
 
