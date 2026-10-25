@@ -34,8 +34,8 @@
 | Export | 进度/取消/重试 | P4 partial：progress JSON、`.partial` 原子收尾、Tauri 取消按钮、sidecar cleanup-output、invalid-path failure cleanup、MP4/M4A cancel smoke 已通过；失败重试与长时压力未完成 | Tauri orchestration + sidecar | adrian export dialog | 取消后无最终半成品、失败清理、重试 |
 | Shell | Tauri 录制壳 | 已验收 | `apps/tauri` | xiaoying Electron UI 仅作交互参照 | 安装包真实 GUI |
 | Shell | 中文基础界面 | 已实现部分 | Tauri | 两仓库布局/检查器 | UI smoke |
-| Shell | 英文/本地化切换 | P5 partial：settings modal 已提供简体中文/English preference、核心 toolbar/action labels 可运行时切换并持久化；完整界面翻译与资源本地化未完成 | localization + Tauri | xiaoying localization | 运行时切换、重启保留 |
-| Shell | 设置/权限/托盘/备忘录/标记 | P5 partial：显示器/窗口枚举、源切换、区域参数与 WebView region picker、settings modal、采集能力预检、Windows 隐私设置入口、recording marker、Tauri native tray 已接入；权限结果专用向导、备忘录浮窗、DPI/多显示器 picker 仍未完成 | Tauri/Win32 + project model | adrian dialogs/memo | 权限失败、托盘、设置持久化、多显示器区域、marker 重开 |
+| Shell | 英文/本地化切换 | P5 partial：settings modal 已提供简体中文/English preference、核心 toolbar/action labels、备忘录与权限向导标签可运行时切换并持久化；完整界面翻译与资源本地化未完成 | localization + Tauri | xiaoying localization | 运行时切换、重启保留 |
+| Shell | 设置/权限/托盘/备忘录/标记 | P5 partial：显示器/窗口枚举、源切换、区域参数与 WebView region picker、settings modal、采集能力预检、权限向导、Windows 隐私设置入口、recording marker、Tauri native tray、按工程持久化备忘录浮窗已接入；DPI/多显示器 picker、完整权限结果 API 仍未完成 | Tauri/Win32 + project model | adrian dialogs/memo | 权限失败、托盘、设置持久化、多显示器区域、memo 重开、marker 重开 |
 | Release | FFmpeg 动态 LGPL | P6 partial：动态 DLL 链接、sidecar 携带与禁止 GPL 参考包边界已固化；已取得与 vcpkg `n9.0.2` port SHA-512 相符的源码归档、14 个补丁哈希并生成材料 ZIP；NSIS 已装配 `LICENSE`、`THIRD_PARTY_NOTICES.md` 与 `FFMPEG-LGPL-NOTICE.txt`；最终发布包仍缺源码获取页闭环、构建复现说明、DLL 可替换验证与法律审查 | CMake/vcpkg/package | 不复制 adrian GPL 包 | DLL/源码/补丁/材料 ZIP 哈希、安装包 notice、替换 DLL、安装/卸载审计 |
 | Release | 长时/跨硬件 | P6 partial：新增 `tests/p6-capture-matrix.ps1`，当前 NVIDIA 机器脚本化完成 HEVC 2560×1600/60s/60fps：3600 输出帧、0 非单调丢帧、0 音频 discontinuity、330 repeated；H.264 同规格输出 3600 帧、338 repeated、1 audio discontinuity（脚本阈值可显式放宽并保留原始值）；编码器枚举同时记录 AMD 激活失败、NVIDIA 激活成功和软件 fallback；4K60、AMD/Intel/无硬件编码器、长时多轮与休眠恢复仍未完成 | capture/export | 两仓库测试矩阵思路 | 脚本报告、4K60、混合显卡、休眠恢复、重复帧/音频断点阈值 |
 

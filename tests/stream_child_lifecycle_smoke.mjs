@@ -213,7 +213,16 @@ try {
     await waitFor("settings capability 检查", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.length > 0'));
     await evaluateValue('document.querySelector(".settings-open-permissions").click(); true');
     await waitFor("Windows 隐私设置入口", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.includes("已打开")'));
+    await evaluateValue('document.querySelector("#settings-permission-wizard").click(); true');
+    await waitFor("权限向导打开", async () => await evaluateValue('Boolean(document.querySelector(".permission-modal"))'));
+    await waitFor("权限向导屏幕检查", async () => await evaluateValue('document.querySelector(".permission-screen-status").textContent.length > 0'));
+    await evaluateValue('document.querySelector(".permission-close").click(); true');
     await evaluateValue('document.querySelector(".settings-language").value="en-US";document.querySelector(".settings-save").click(); true');
+    await evaluateValue('document.querySelector("#memo-button").click(); true');
+    await waitFor("备忘录浮窗打开", async () => await evaluateValue('Boolean(document.querySelector(".memo-float"))'));
+    await evaluateValue('document.querySelector(".memo-float textarea").value="shell smoke";document.querySelector(".memo-float textarea").dispatchEvent(new Event("input",{bubbles:true})); true');
+    await waitFor("备忘录自动保存", async () => await evaluateValue('localStorage.getItem("dogsc.memo.global") === "shell smoke"'));
+    await evaluateValue('document.querySelector(".memo-close").click(); true');
     await evaluateValue('document.querySelector("#settings-button").click(); true');
     await waitFor("language preference persisted", async () => await evaluateValue('document.querySelector(".settings-language").value === "en-US"'));
     await evaluateValue('document.querySelector(".settings-close").click(); true');

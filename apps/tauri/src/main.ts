@@ -91,7 +91,7 @@ app.innerHTML = `
       <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="toolbar-brand"><span class="brand-mark">DS</span><strong>DogSC</strong><span class="toolbar-separator">/</span><span id="project-title">未打开工程</span></div>
       <div class="toolbar-center"><button class="toolbar-tab active" type="button">编辑</button><button class="toolbar-tab" type="button" disabled>录制</button></div>
-      <div class="toolbar-actions"><span class="system-chip"><i></i> Native</span><button id="settings-button" class="icon-button" type="button" title="设置">⚙</button></div>
+      <div class="toolbar-actions"><span class="system-chip"><i></i> Native</span><button id="memo-button" class="secondary compact" type="button">备忘录</button><button id="settings-button" class="icon-button" type="button" title="设置">⚙</button></div>
     </header>
     <div class="app-body">
       <aside class="rail" aria-label="主导航">
@@ -215,6 +215,7 @@ const projectExportFormat = $("project-export-format") as HTMLSelectElement;
 const projectExportCancel = $("project-export-cancel") as HTMLButtonElement;
 const projectExport = $("project-export") as HTMLButtonElement;
 const settingsButton = $("settings-button") as HTMLButtonElement;
+const memoButton = $("memo-button") as HTMLButtonElement;
 const styleBackground = $("style-background") as HTMLSelectElement;
 const stylePadding = $("style-padding") as HTMLInputElement;
 const styleCameraSize = $("style-camera-size") as HTMLInputElement;
@@ -991,12 +992,12 @@ function applyLocale(locale: string) {
   const english = locale === "en-US";
   document.documentElement.lang = english ? "en" : "zh-CN";
   const text: Record<string, string> = english ? {
-    "rail-projects": "Projects", "project-open": "Open", "project-rename": "Rename", "style-apply": "Apply",
+    "memo-button": "Memo", "settings-permission-wizard": "Permission guide", "rail-projects": "Projects", "project-open": "Open", "project-rename": "Rename", "style-apply": "Apply",
     "mosaic-apply": "Add", "sticker-apply": "Add", "screen-motion-apply": "Add motion", "edit-marker": "Marker",
     "project-save": "Save", "project-discard": "Discard", "project-undo": "Undo", "project-redo": "Redo",
     "project-export": "Export", "project-export-cancel": "Cancel",
   } : {
-    "rail-projects": "项目", "project-open": "打开", "project-rename": "重命名", "style-apply": "应用",
+    "memo-button": "备忘录", "settings-permission-wizard": "权限向导", "rail-projects": "项目", "project-open": "打开", "project-rename": "重命名", "style-apply": "应用",
     "mosaic-apply": "添加", "sticker-apply": "添加", "screen-motion-apply": "添加运镜", "edit-marker": "标记",
     "project-save": "保存", "project-discard": "放弃", "project-undo": "撤销", "project-redo": "重做",
     "project-export": "导出", "project-export-cancel": "取消",
@@ -1006,12 +1007,57 @@ function applyLocale(locale: string) {
   if (railLabels.length >= 3) ["录制", english ? "Projects" : "项目", english ? "Assets" : "素材"].forEach((label, index) => { railLabels[index].textContent = english ? ["Record", "Projects", "Assets"][index] : label; });
 }
 
+function memoStorageKey() {
+  return `dogsc.memo.${projectFile || "global"}`;
+}
+
+function openMemo() {
+  const existing = document.querySelector<HTMLElement>(".memo-float");
+  if (existing) { existing.querySelector<HTMLTextAreaElement>("textarea")?.focus(); return; }
+  const panel = document.createElement("section");
+  panel.className = "memo-float";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", "备忘录");
+  panel.innerHTML = `<div class="memo-heading"><strong>备忘录</strong><button type="button" class="icon-button small memo-close">×</button></div><textarea aria-label="备忘录内容" placeholder="记录这个工程的想法……"></textarea><div class="memo-footer"><span class="memo-state">自动保存</span><button type="button" class="secondary compact memo-clear">清空</button></div>`;
+  document.body.append(panel);
+  const text = panel.querySelector<HTMLTextAreaElement>("textarea")!;
+  const state = panel.querySelector<HTMLElement>(".memo-state")!;
+  text.value = localStorage.getItem(memoStorageKey()) ?? "";
+  text.addEventListener("input", () => { localStorage.setItem(memoStorageKey(), text.value); state.textContent = "已保存"; });
+  panel.querySelector(".memo-clear")?.addEventListener("click", () => { text.value = ""; localStorage.removeItem(memoStorageKey()); state.textContent = "已清空"; text.focus(); });
+  panel.querySelector(".memo-close")?.addEventListener("click", () => panel.remove());
+  text.focus();
+}
+
+function openPermissionWizard() {
+  if (document.querySelector(".permission-modal-backdrop")) return;
+  const modal = document.createElement("div");
+  modal.className = "permission-modal-backdrop";
+  modal.innerHTML = `<div class="permission-modal" role="dialog" aria-label="权限向导"><div class="region-modal-heading"><strong>权限向导</strong><button type="button" class="icon-button small permission-close">×</button></div><p class="permission-intro">Windows 会在首次使用对应采集设备时返回权限结果。这里先检查可枚举能力，并提供对应系统设置入口。</p><div class="permission-list"><div><strong>屏幕 / 窗口采集</strong><span class="permission-screen-status">未检查</span><button type="button" class="secondary compact permission-screen-check">重新检查</button></div><div><strong>摄像头</strong><span>首次使用时检查</span><button type="button" class="secondary compact permission-open" data-page="ms-settings:privacy-webcam">打开设置</button></div><div><strong>麦克风</strong><span>首次使用时检查</span><button type="button" class="secondary compact permission-open" data-page="ms-settings:privacy-microphone">打开设置</button></div></div><div class="region-modal-footer"><span class="region-readout permission-result"></span><button type="button" class="primary permission-close">完成</button></div></div>`;
+  document.body.append(modal);
+  const close = () => modal.remove();
+  modal.querySelectorAll(".permission-close").forEach((button) => button.addEventListener("click", close));
+  const screenStatus = modal.querySelector<HTMLElement>(".permission-screen-status")!;
+  const checkScreen = async () => {
+    screenStatus.textContent = "检查中…";
+    try { const targets = await runCaptureTargets(); screenStatus.textContent = `可用：${targets.monitors.length} 个显示器 / ${targets.windows.length} 个窗口`; }
+    catch (error) { screenStatus.textContent = `失败：${String(error)}`; }
+  };
+  modal.querySelector(".permission-screen-check")?.addEventListener("click", () => { void checkScreen(); });
+  modal.querySelectorAll<HTMLButtonElement>(".permission-open").forEach((button) => button.addEventListener("click", async () => {
+    const result = modal.querySelector<HTMLElement>(".permission-result")!;
+    try { await invoke("open_windows_settings", { page: button.dataset.page }); result.textContent = "已打开 Windows 设置"; }
+    catch (error) { result.textContent = `无法打开设置：${String(error)}`; }
+  }));
+  void checkScreen();
+}
+
 function openSettings() {
   if (document.querySelector(".settings-modal-backdrop")) return;
   const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}");
   const modal = document.createElement("div");
   modal.className = "settings-modal-backdrop";
-  modal.innerHTML = `<div class="settings-modal" role="dialog" aria-label="设置"><div class="region-modal-heading"><strong>设置</strong><button type="button" class="icon-button small settings-close">×</button></div><div class="settings-modal-body"><label class="field"><span>界面语言</span><select class="settings-language"><option value="zh-CN">简体中文</option><option value="en-US">English</option></select></label><label class="field"><span>默认帧率</span><select class="settings-fps"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option></select></label><label class="field"><span>默认输出目录</span><input class="settings-directory" type="text" /></label><div class="settings-permission"><strong>运行时能力</strong><span>Windows Graphics Capture、Media Foundation、WASAPI</span><small>权限会在首次使用对应功能时由系统返回结果。</small><button type="button" class="secondary compact settings-check">检查采集能力</button><button type="button" class="secondary compact settings-open-permissions">打开 Windows 隐私设置</button><span class="settings-check-result"></span></div></div><div class="region-modal-footer"><span class="region-readout">偏好设置保存在本机</span><button type="button" class="primary settings-save">完成</button></div></div>`;
+  modal.innerHTML = `<div class="settings-modal" role="dialog" aria-label="设置"><div class="region-modal-heading"><strong>设置</strong><button type="button" class="icon-button small settings-close">×</button></div><div class="settings-modal-body"><label class="field"><span>界面语言</span><select class="settings-language"><option value="zh-CN">简体中文</option><option value="en-US">English</option></select></label><label class="field"><span>默认帧率</span><select class="settings-fps"><option value="30">30 fps</option><option value="60">60 fps</option><option value="90">90 fps</option><option value="120">120 fps</option></select></label><label class="field"><span>默认输出目录</span><input class="settings-directory" type="text" /></label><div class="settings-permission"><strong>运行时能力</strong><span>Windows Graphics Capture、Media Foundation、WASAPI</span><small>权限会在首次使用对应功能时由系统返回结果。</small><button id="settings-permission-wizard" type="button" class="secondary compact">权限向导</button><button type="button" class="secondary compact settings-check">检查采集能力</button><button type="button" class="secondary compact settings-open-permissions">打开 Windows 隐私设置</button><span class="settings-check-result"></span></div></div><div class="region-modal-footer"><span class="region-readout">偏好设置保存在本机</span><button type="button" class="primary settings-save">完成</button></div></div>`;
   document.body.append(modal);
   const languageInput = modal.querySelector<HTMLSelectElement>(".settings-language")!;
   const fpsInput = modal.querySelector<HTMLSelectElement>(".settings-fps")!;
@@ -1022,6 +1068,7 @@ function openSettings() {
   applyLocale(languageInput.value);
   const close = () => modal.remove();
   modal.querySelector(".settings-close")?.addEventListener("click", close);
+  modal.querySelector("#settings-permission-wizard")?.addEventListener("click", openPermissionWizard);
   modal.querySelector(".settings-check")?.addEventListener("click", async () => {
     const result = modal.querySelector<HTMLElement>(".settings-check-result")!;
     result.textContent = "检查中…";
@@ -1371,6 +1418,7 @@ mosaicApply.addEventListener("click", () => { void applyMosaic(); });
 screenMotionApply.addEventListener("click", () => { void applyScreenMotion(); });
 editMarker.addEventListener("click", () => { void applyMarker(); });
 stickerApply.addEventListener("click", () => { void applySticker(); });
+memoButton.addEventListener("click", openMemo);
 let closeConfirmationInProgress = false;
 void getCurrentWindow().onCloseRequested(async (event) => {
   if (!projectCommandBusy && !projectSnapshot?.session?.dirty) return;
