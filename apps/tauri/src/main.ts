@@ -44,13 +44,24 @@ type ProjectLibraryItem = {
 
 type CaptureTargets = { monitors: Array<{ index: number; device: string; width: number; height: number; primary: boolean }>; windows: Array<{ hwnd: number; title: string; minimized: boolean }> };
 type ProjectLibrary = { root: string; projects: ProjectLibraryItem[] };
-type PreviewFrame = { time: number; width: number; height: number; mime: string; data: string };
+type PreviewFrame = { time: number; width: number; height: number; mime: string; data: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean };
 
 let projectSnapshot: ProjectSnapshot | null = null;
 let projectFile = "";
 let projectLibrary: ProjectLibrary | null = null;
 let previewChild: CaptureChild | null = null;
 let previewBuffer = "";
+let previewGeneration = 0;
+let previewStarting = false;
+let previewFrameChain = Promise.resolve();
+let previewFramesReceived = 0;
+let previewFramesPresented = 0;
+let previewFramesDropped = 0;
+let previewBackpressureSkips = 0;
+const previewPresentationTimes = new Float64Array(30);
+let previewPresentationCursor = 0;
+let previewPresentationCount = 0;
+let latestPreviewFrame: PreviewFrame | null = null;
 
 const defaultDirectory = async () => join(await homeDir(), "Videos", "DogSC");
 
@@ -389,71 +400,190 @@ async function runProjectExport(path: string, output: string): Promise<{ output:
   });
 }
 
+function resetPreviewStats() {
+  previewFramesReceived = 0;
+  previewFramesPresented = 0;
+  previewFramesDropped = 0;
+  previewBackpressureSkips = 0;
+  previewPresentationTimes.fill(0);
+  previewPresentationCursor = 0;
+  previewPresentationCount = 0;
+  latestPreviewFrame = null;
+}
+
+function previewFrameRate() {
+  if (previewPresentationCount < 2) return 0;
+  const oldest = previewPresentationCount === previewPresentationTimes.length ? previewPresentationCursor : 0;
+  const newest = (previewPresentationCursor + previewPresentationTimes.length - 1) % previewPresentationTimes.length;
+  const elapsed = previewPresentationTimes[newest] - previewPresentationTimes[oldest];
+  return elapsed > 0 ? (previewPresentationCount - 1) * 1000 / elapsed : 0;
+}
+
+function updatePreviewStatus(frame = latestPreviewFrame) {
+  if (!frame) return;
+  const surface = frame.decodeSurface === "DXGI" ? "DXGI surface" : frame.dxgiManager ? "DXGI manager/CPU readback" : "CPU fallback";
+  projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s · ${previewFrameRate().toFixed(0)} fps · ${surface} · 帧 ${previewFramesPresented}/${previewFramesReceived} · 丢帧 ${previewFramesDropped} · 背压 ${previewBackpressureSkips}`;
+}
+
 async function stopPreviewStream() {
+  ++previewGeneration;
+  previewStarting = false;
   if (previewChild) {
     try { await previewChild.kill(); } catch { /* 进程已退出 */ }
     previewChild = null;
   }
   previewBuffer = "";
+  previewFrameChain = Promise.resolve();
   previewPlaying = false;
   previewPending = false;
+  resetPreviewStats();
   projectPreviewPlay.textContent = "播放";
   projectPreviewImage.removeAttribute("src");
   projectPreviewStatus.textContent = "未加载预览";
 }
-function consumePreviewLines(chunk: string) {
+
+function previewAtEnd(time: number, duration: number) {
+  return time >= duration - 1e-6;
+}
+async function presentPreviewLine(line: string, generation: number) {
+  if (generation !== previewGeneration) return;
+  let payload: PreviewFrame | { error: string };
+  try {
+    payload = JSON.parse(line) as PreviewFrame | { error: string };
+  } catch (error) {
+    previewPending = false;
+    previewPlaying = false;
+    previewFramesDropped += 1;
+    projectPreviewPlay.textContent = "播放";
+    projectPreviewStatus.textContent = `预览返回无效 JSON：${String(error)}`;
+    return;
+  }
+  if ("error" in payload) {
+    const requestTime = Number(editTime.value) || 0;
+    if (payload.error === "媒体没有可读取的帧" && projectSnapshot &&
+        previewAtEnd(requestTime + 1 / 30, projectSnapshot.outputDuration)) {
+      previewPending = false;
+      previewPlaying = false;
+      editTime.value = projectSnapshot.outputDuration.toFixed(3);
+      projectPreviewPlay.textContent = "播放";
+      if (latestPreviewFrame) {
+        updatePreviewStatus();
+        projectPreviewStatus.textContent += " · 片尾";
+      } else {
+        projectPreviewStatus.textContent = "预览已到片尾";
+      }
+      return;
+    }
+    previewPending = false;
+    previewPlaying = false;
+    projectPreviewPlay.textContent = "播放";
+    projectPreviewStatus.textContent = `预览失败：${payload.error}`;
+    return;
+  }
+
+  previewFramesReceived += 1;
+  projectPreviewImage.src = payload.data;
+  try {
+    await projectPreviewImage.decode();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  } catch {
+    if (generation !== previewGeneration) return;
+    previewPending = false;
+    previewPlaying = false;
+    previewFramesDropped += 1;
+    projectPreviewPlay.textContent = "播放";
+    updatePreviewStatus(payload);
+    return;
+  }
+  if (generation !== previewGeneration) return;
+
+  previewPending = false;
+  previewFramesPresented += 1;
+  latestPreviewFrame = payload;
+  previewPresentationTimes[previewPresentationCursor] = performance.now();
+  previewPresentationCursor = (previewPresentationCursor + 1) % previewPresentationTimes.length;
+  previewPresentationCount = Math.min(previewPresentationCount + 1, previewPresentationTimes.length);
+  updatePreviewStatus(payload);
+
+  if (previewPlaying) {
+    const next = payload.time + 1 / 30;
+    if (projectSnapshot && previewAtEnd(next, projectSnapshot.outputDuration)) {
+      previewPlaying = false;
+      projectPreviewPlay.textContent = "播放";
+    } else {
+      editTime.value = (Math.floor(next * 10000000) / 10000000).toFixed(7);
+      window.setTimeout(() => { void requestPreviewFrame(); }, 0);
+    }
+  }
+}
+
+function consumePreviewLines(chunk: string, generation: number) {
+  if (generation !== previewGeneration) return;
   previewBuffer += chunk;
   let newline = previewBuffer.indexOf("\n");
   while (newline >= 0) {
     const line = previewBuffer.slice(0, newline).trim();
     previewBuffer = previewBuffer.slice(newline + 1);
     if (line) {
-      try {
-        const payload = JSON.parse(line) as PreviewFrame | { error: string };
-        previewPending = false;
-        if ("error" in payload) {
+      previewFrameChain = previewFrameChain
+        .then(() => presentPreviewLine(line, generation))
+        .catch((error) => {
+          if (generation !== previewGeneration) return;
+          previewPending = false;
           previewPlaying = false;
           projectPreviewPlay.textContent = "播放";
-          projectPreviewStatus.textContent = `预览失败：${payload.error}`;
-        } else {
-          projectPreviewImage.src = payload.data;
-          projectPreviewStatus.textContent = `${payload.width}×${payload.height} @ ${payload.time.toFixed(2)}s`;
-          if (previewPlaying) {
-            const next = payload.time + 1 / 30;
-            if (projectSnapshot && next >= projectSnapshot.outputDuration) {
-              previewPlaying = false;
-              projectPreviewPlay.textContent = "播放";
-            } else {
-              editTime.value = next.toFixed(3);
-              window.setTimeout(() => { void requestPreviewFrame(); }, 0);
-            }
-          }
-        }
-      } catch (error) {
-        previewPending = false;
-        previewPlaying = false;
-        projectPreviewPlay.textContent = "播放";
-        projectPreviewStatus.textContent = `预览返回无效 JSON：${String(error)}`;
-      }
+          projectPreviewStatus.textContent = `预览处理失败：${String(error)}`;
+        });
     }
     newline = previewBuffer.indexOf("\n");
   }
 }
 
 async function startPreviewStream() {
-  if (!projectFile || previewChild) return;
+  if (!projectFile || previewChild || previewStarting) return;
+  previewStarting = true;
+  const generation = ++previewGeneration;
+  previewBuffer = "";
+  previewFrameChain = Promise.resolve();
+  resetPreviewStats();
   const command = Command.sidecar("binaries/dogsc_capture", ["project", "stream", projectFile, "960"]);
-  command.stdout.on("data", (line) => consumePreviewLines(String(line)));
-  command.stderr.on("data", (line) => { projectPreviewStatus.textContent = `预览错误：${String(line).trim()}`; });
-  command.on("close", () => { previewChild = null; });
-  try { previewChild = await command.spawn(); }
-  catch (error) { projectPreviewStatus.textContent = `预览启动失败：${String(error)}`; }
+  command.stdout.on("data", (line) => consumePreviewLines(String(line), generation));
+  command.stderr.on("data", (line) => {
+    if (generation === previewGeneration) projectPreviewStatus.textContent = `预览错误：${String(line).trim()}`;
+  });
+  command.on("close", () => {
+    if (generation !== previewGeneration) return;
+    previewChild = null;
+    previewPending = false;
+    if (previewPlaying) {
+      previewPlaying = false;
+      projectPreviewPlay.textContent = "播放";
+    }
+  });
+  try {
+    const child = await command.spawn();
+    if (generation !== previewGeneration) {
+      try { await child.kill(); } catch { /* 进程已退出 */ }
+      return;
+    }
+    previewChild = child;
+  } catch (error) {
+    if (generation === previewGeneration) projectPreviewStatus.textContent = `预览启动失败：${String(error)}`;
+  } finally {
+    if (generation === previewGeneration) previewStarting = false;
+  }
 }
 
 async function requestPreviewFrame() {
-  if (!previewChild || previewPending) return;
+  if (!previewChild) return;
+  if (previewPending) {
+    previewBackpressureSkips += 1;
+    updatePreviewStatus();
+    return;
+  }
   const seconds = Number(editTime.value) || 0;
-  if (previewPlaying && projectSnapshot && seconds >= projectSnapshot.outputDuration) {
+  if (previewPlaying && projectSnapshot && previewAtEnd(seconds, projectSnapshot.outputDuration)) {
     previewPlaying = false;
     projectPreviewPlay.textContent = "播放";
     return;
@@ -490,8 +620,12 @@ async function togglePreviewPlay() {
     projectPreviewPlay.textContent = "播放";
     return;
   }
-  if (projectSnapshot && Number(editTime.value) >= projectSnapshot.outputDuration) editTime.value = "0";
+  if (projectSnapshot && previewAtEnd(Number(editTime.value), projectSnapshot.outputDuration)) editTime.value = "0";
   await startPreviewStream();
+  if (!previewChild) {
+    previewPlaying = false;
+    return;
+  }
   previewPlaying = true;
   projectPreviewPlay.textContent = "暂停";
   await requestPreviewFrame();

@@ -8,9 +8,9 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 **移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染、P1a/P1b 项目生命周期、P2a/P2b 预览基础与 P4 视频导出 prototype 已实现。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、draft session、自动保存、flush/重试、discard、recovery manifest、重命名、时间线编辑、多步历史；MF SourceReader 单帧/持久 stream、Tauri child、30fps 播放请求、D2D/WARP 单帧合成和单源 H.264 MP4 导出 prototype。
-- 已验证：Windows Release clean build；7/7 CTest（含项目 history/rename smoke）；P1b CLI begin/edit-draft/save/discard/recovery smoke；H.264/HEVC 单帧/seek/stream/EOF/D2D composite；最新 GUI draft 自动保存、D2D 预览、P2b 播放头和 H.264 MP4 导出。
-- 尚未完成：崩溃恢复启动选择、真实关闭确认、脏状态的完整编辑器事务、吸附、DXGI 实时播放/拖动、硬背压、丢帧统计、无撕裂、音频/M4A、分段变速映射、导出取消/失败恢复、画布/检查器完整 UI、长时 4K60 与跨设备/权限验收；ProRes 实时性能与 LGPL 分发合规仍未通过。
+- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、语义 dirty draft、debounce 自动保存、flush/重试、discard/recovery、关闭确认、时间线编辑与多步历史；MF SourceReader 持久 stream、按需顺序解码、D3D11 DXGI decoder surface ingress（设备支持时）、PNG 预览与背压/帧统计；单源 H.264 MP4 导出 prototype。
+- 已验证：Windows Release clean build；7/7 CTest；H.264/HEVC frame/seek/stream/EOF/D2D composite；真实 GUI dirty close/cancel/retry；跨工程 stream child 生命周期。当前 DXGI GUI 样本 12–20fps、0 observed presentation drops；输出仍 staging-readback→CPU→PNG→WebView，未达到 60Hz/no-tearing。
+- 尚未完成：DXGI surface 直接呈现、硬背压/驱动丢帧统计、60Hz/无撕裂；timeline seek/暂停完整语义；实际光标/点击合成、摄像头完整布局、贴图资源渲染、屏幕 3D/运镜/开场；SourceReader 时间线音频/M4A 导出、取消/失败恢复；区域拖拽选择、权限/设置/托盘/语言/录制标记；长时 4K60/跨设备与 FFmpeg LGPL 分发合规。
 
 ## 决策基线
 

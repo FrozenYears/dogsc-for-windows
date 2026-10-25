@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
@@ -22,7 +23,14 @@ const projectB = projectPath(projectBArgument);
 if (projectA.toLowerCase() === projectB.toLowerCase()) throw new Error("必须提供两个不同的工程文件");
 const titleA = JSON.parse(readFileSync(projectA, "utf8")).title;
 const titleB = JSON.parse(readFileSync(projectB, "utf8")).title;
-const port = 9300 + Math.floor(Math.random() * 1000);
+const port = await new Promise((resolvePort, rejectPort) => {
+  const server = createServer();
+  server.once("error", rejectPort);
+  server.listen(0, "127.0.0.1", () => {
+    const address = server.address();
+    server.close((error) => error ? rejectPort(error) : resolvePort(typeof address === "object" && address ? address.port : 0));
+  });
+});
 const app = spawn(appPath, [], {
   env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` },
   stdio: "ignore",
@@ -118,19 +126,36 @@ try {
   await waitFor("Tauri 工程控件就绪", async () => await evaluateValue('Boolean(document.querySelector("#project-path") && document.querySelector("#project-preview-play"))'));
 
   await openProject(projectA, titleA);
-  await evaluateValue('document.querySelector("#project-preview-play").click(); true');
+  await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
   await waitForStream(projectA, true);
+  await waitFor("工程 A 的帧呈现统计", async () => {
+    const status = await evaluateValue('document.querySelector("#project-preview-status").textContent');
+    if (status.startsWith("预览失败") || status.startsWith("预览错误")) throw new Error(`工程 A 预览失败: ${status}`);
+    return status.includes("丢帧");
+  });
+  const previewStatusA = await evaluateValue('document.querySelector("#project-preview-status").textContent');
+  if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" && !previewStatusA.includes("DXGI surface")) {
+    throw new Error(`工程 A 未使用 DXGI decoder surface: ${previewStatusA}`);
+  }
 
   await openProject(projectB, titleB);
   await waitForStream(projectA, false);
-  await evaluateValue('document.querySelector("#project-preview-play").click(); true');
+  await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
   await waitForStream(projectB, true);
+  await waitFor("工程 B 的帧呈现统计", async () => await evaluateValue('document.querySelector("#project-preview-status").textContent.includes("背压")'));
+  const previewStatus = await evaluateValue('document.querySelector("#project-preview-status").textContent');
+  if (process.env.DOGSC_REQUIRE_DXGI_SURFACE === "1" && !previewStatus.includes("DXGI surface")) {
+    throw new Error(`当前设备要求 DXGI decoder surface，但收到: ${previewStatus}`);
+  }
+  if (!/帧 [1-9]\d*\/[1-9]\d*/.test(previewStatus) || !previewStatus.includes("丢帧")) {
+    throw new Error(`没有取得已呈现帧统计: ${previewStatus}`);
+  }
   const active = await streamProcesses();
   const activeProjectStreams = active.filter((item) => item.CommandLine.toLowerCase().includes("project stream"));
   if (activeProjectStreams.length !== 1 || !activeProjectStreams[0].CommandLine.toLowerCase().includes(projectB.toLowerCase())) {
     throw new Error(`切换后 stream child 状态不正确: ${JSON.stringify(activeProjectStreams)}`);
   }
-  console.log("stream_child_lifecycle_smoke: project A child exited before project B child started");
+  console.log(`stream_child_lifecycle_smoke: A=${previewStatusA}; B=${previewStatus}; project A child exited before project B child started`);
 } finally {
   socket?.close();
   if (app.exitCode === null) {

@@ -30,6 +30,9 @@ function Invoke-JsonCommand {
     }
     $json = Get-Content $out -Raw | ConvertFrom-Json
     if ([string]::IsNullOrWhiteSpace($json.data)) { throw "$Name returned no image data" }
+    if ($json.mime -ne "image/png") { throw "$Name returned unexpected mime type $($json.mime)" }
+    $bytes = [Convert]::FromBase64String($json.data.Substring($json.data.IndexOf(",") + 1))
+    if ([Convert]::ToHexString($bytes[0..7]) -ne "89504E470D0A1A0A") { throw "$Name returned an invalid PNG signature" }
     return $json
 }
 
@@ -46,7 +49,17 @@ function Invoke-Stream {
     $lines = @(Get-Content $outputPath | Where-Object { $_ })
     if ($lines.Count -ne 2) { throw "$Name returned $($lines.Count) frames" }
     $first = $lines[0] | ConvertFrom-Json
-    if ($first.width -ne 320) { throw "$Name returned invalid dimensions" }
+    $second = $lines[1] | ConvertFrom-Json
+    if ($first.width -ne 320 -or $first.mime -ne "image/png" -or $second.mime -ne "image/png") {
+        throw "$Name returned invalid frame dimensions or mime"
+    }
+    if ($first.time -lt 0 -or $first.time -gt 1.0 / 30.0 + 0.001 -or
+        [math]::Abs($second.time - 0.1) -gt 1.0 / 30.0 + 0.001) {
+        throw "$Name returned non-monotonic or incorrect sequential PTS: $($first.time), $($second.time)"
+    }
+    if ($first.decodeSurface -notin @("DXGI", "system-memory") -or $null -eq $first.dxgiManager) {
+        throw "$Name did not report decoder surface telemetry"
+    }
 }
 
 try {
@@ -57,6 +70,9 @@ try {
         $zero = Invoke-JsonCommand "$codec-zero" @("project", "frame", $project, "0", "320")
         $seek = Invoke-JsonCommand "$codec-seek" @("project", "frame", $project, "0.1", "320")
         if ($zero.width -ne 320 -or $seek.height -le 0) { throw "$codec frame dimensions invalid" }
+        if ($zero.decodeSurface -notin @("DXGI", "system-memory") -or $null -eq $zero.dxgiManager) {
+            throw "$codec did not report decoder surface telemetry"
+        }
         Invoke-Stream "$codec-stream" $project
         $bad = Invoke-JsonCommand "$codec-eof" @("project", "frame", $project, "999", "320") -AllowFailure
         if ($bad.ExitCode -eq 0) { throw "$codec EOF unexpectedly succeeded" }
