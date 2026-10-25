@@ -387,8 +387,40 @@ RecorderProject apply_style(const RecorderProject& project, std::wstring_view st
         if (std::find(presets.begin(), presets.end(), preset) == presets.end()) {
             throw std::invalid_argument("背景预设无效");
         }
-        output.canvas.background_source.kind = BackgroundSourceKind::kPattern;
         output.canvas.background_source.pattern_preset = preset;
+    } else if (style == L"screen-frame") {
+        const auto value = winrt::to_string(arguments[0]);
+        static constexpr std::array<std::string_view, 10> frames{
+            "none", "windowLight", "windowDark", "browserLight", "browserDark",
+            "devicePhone", "deviceTablet", "devicePhonePortrait", "devicePhoneLandscape", "deviceTabletPortrait"};
+        if (std::find(frames.begin(), frames.end(), value) == frames.end() && value != "deviceTabletLandscape") {
+            throw std::invalid_argument("screen-frame 无效");
+        }
+        output.canvas.screen_frame = value;
+    } else if (style == L"screen-motion") {
+        const auto value = std::wstring_view(arguments[0]);
+        if (value == L"聚焦") output.motion.screen = ScreenMotionStyle::kFocused;
+        else if (value == L"平滑") output.motion.screen = ScreenMotionStyle::kSmooth;
+        else throw std::invalid_argument("screen-motion 需要 聚焦/平滑");
+    } else if (style == L"cursor-motion") {
+        const auto value = std::wstring_view(arguments[0]);
+        if (value == L"平滑") output.motion.cursor = CursorMotionStyle::kSmooth;
+        else if (value == L"适中") output.motion.cursor = CursorMotionStyle::kMedium;
+        else if (value == L"快速") output.motion.cursor = CursorMotionStyle::kRapid;
+        else if (value == L"无") output.motion.cursor = CursorMotionStyle::kNone;
+        else throw std::invalid_argument("cursor-motion 无效");
+    } else if (style == L"opening-enabled") {
+        const auto value = std::wstring_view(arguments[0]);
+        if (value != L"true" && value != L"false") throw std::invalid_argument("opening-enabled 需要 true/false");
+        output.opening_sequence.is_enabled = value == L"true";
+    } else if (style == L"opening-preset") {
+        const auto value = std::wstring_view(arguments[0]);
+        if (value == L"聚拢") output.opening_sequence.preset = OpeningSequencePreset::kConverge;
+        else if (value == L"侧滑") output.opening_sequence.preset = OpeningSequencePreset::kSideSlide;
+        else if (value == L"轻 3D") output.opening_sequence.preset = OpeningSequencePreset::kLight3D;
+        else throw std::invalid_argument("opening-preset 无效");
+    } else if (style == L"opening-duration") {
+        output.opening_sequence.duration = std::clamp(parse_double(arguments[0], "opening-duration"), 0.18, 10.0);
     } else if (style == L"padding") {
         output.canvas.padding = std::clamp(parse_double(arguments[0], "padding"), 0.0, 1000.0);
     } else if (style == L"camera-hidden") {

@@ -199,6 +199,10 @@ try {
   await waitFor("Tauri 工程控件就绪", async () => await evaluateValue('Boolean(document.querySelector("#project-path") && document.querySelector("#project-preview-play"))'));
 
   await openProject(projectA, titleA);
+  if (process.env.DOGSC_EXERCISE_SCENE_CONTROLS === "1") {
+    await evaluateValue('(()=>{document.querySelector("#style-screen-frame").value="browserDark";document.querySelector("#style-screen-motion").value="平滑";document.querySelector("#style-cursor-motion").value="适中";document.querySelector("#style-opening-enabled").checked=true;document.querySelector("#style-opening-preset").value="侧滑";document.querySelector("#style-opening-duration").value="1.2";document.querySelector("#style-apply").click();return true})()');
+    await waitFor("scene controls 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
+  }
   await revealPreview();
   await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
   await waitForStream(projectA, true);

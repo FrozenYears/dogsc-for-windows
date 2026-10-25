@@ -28,7 +28,7 @@
 | Render | 背景/圆角/阴影/样机 | D2D background pattern、画布 padding、圆角/边框/阴影与 browserDark screen-frame 已接入 scene；screen-frame/opening GUI smoke 通过；屏幕 3D/运镜 UI 与跨 preset 像素基准未完成 | compositor | 两仓库 layout panels | 画布尺寸、裁切、颜色、screen chrome、导出复用 |
 | Render | 模糊/spotlight/mosaic | P3 native D2D 已消费 evaluator 的 blur/spotlight 区域、强度与转场；spotlight GUI smoke 通过；mosaic 编辑 UI 与逐像素基准仍未完成 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜、像素对拍 |
 | Render | 贴图/层级/动画 | P3 preview/export 已接入安全相对路径 WIC PNG→D3D11 texture、sticker layer、透明度/圆角/阴影/动画求值；GUI sticker smoke 通过；素材导入 UI、更多格式与逐像素基准未完成 | compositor + WIC assets + Tauri/export | 两仓库 sticker UI | 素材路径安全、层级/出入场、导出复用 |
-| Render | 屏幕 3D/开场 | opening evaluator、screen-frame scene 与预览 smoke 已接入；screen 3D/运镜控件、导出路径与动画像素基准未完成 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界、UI 控件 |
+| Render | 屏幕 3D/开场 | opening evaluator、screen-frame scene、screen/cursor motion 与 opening preset/duration editor controls 已接入并通过 GUI smoke；screen 3D 透视控件、导出路径与动画像素基准未完成 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界、UI 控件 |
 | Export | SourceReader 时间线合成 | P4 prototype 部分已验收：SourceReader→FrameSceneEvaluator→D2D/WARP→MediaWriter，单源视频逐帧输出；尚无分段/变速/音频映射 | export pipeline | xiaoying export.js；adrian VideoExporter | 分段/变速/音频映射 |
 | Export | MP4/M4A 最终导出 | P4 prototype GUI 已验收 H.264 MP4；当前无 M4A/音频、取消和失败恢复 | MF/FFmpeg dynamic | 两仓库 export cancel | MP4/M4A 可重开、取消无半成品 |
 | Export | 进度/取消/重试 | 未实现 | Tauri orchestration | adrian export dialog | 取消后可重试 |

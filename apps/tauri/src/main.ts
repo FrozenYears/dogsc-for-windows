@@ -25,8 +25,15 @@ type ProjectSegment = {
   outputEnd: number;
 };
 
+type ProjectDocument = {
+  title: string;
+  version: number;
+  canvas?: { screenFrame?: string };
+  motion?: { screen?: string; cursor?: string };
+  openingSequence?: { isEnabled?: boolean; preset?: string; duration?: number };
+};
 type ProjectSnapshot = {
-  project: { title: string; version: number };
+  project: ProjectDocument;
   fullSourceDuration: number;
   outputDuration: number;
   segments: ProjectSegment[];
@@ -140,6 +147,8 @@ app.innerHTML = `
           <div class="style-row"><label class="field"><span>背景</span><select id="style-background"><option>黑曜石网格</option><option>工程白网格</option><option>暗夜星阵</option><option>建筑极简点</option><option>立体等角网</option></select></label><label class="field"><span>留白</span><input id="style-padding" type="number" min="0" max="1000" step="1" value="100" /></label><label class="field"><span>摄像头尺寸</span><input id="style-camera-size" type="number" min="0.05" max="1" step="0.01" value="0.29" /></label><label class="field"><span>光标尺寸</span><input id="style-cursor-size" type="number" min="0.25" max="6" step="0.05" value="1.25" /></label><button id="style-apply" class="secondary" type="button" disabled>应用画面参数</button></div>
           <div class="effect-row"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>点击透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>点击缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label></div>
           <div class="camera-row"><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div>
+          <div class="motion-row"><label class="field"><span>屏幕样机</span><select id="style-screen-frame"><option value="none">无</option><option value="windowDark">深色窗口</option><option value="browserDark">深色浏览器</option><option value="browserLight">浅色浏览器</option><option value="devicePhonePortrait">手机竖屏</option><option value="deviceTabletLandscape">平板横屏</option></select></label><label class="field"><span>屏幕运镜</span><select id="style-screen-motion"><option value="聚焦">聚焦</option><option value="平滑">平滑</option></select></label><label class="field"><span>光标运动</span><select id="style-cursor-motion"><option value="平滑">平滑</option><option value="适中">适中</option><option value="快速">快速</option><option value="无">无</option></select></label></div>
+          <div class="opening-row"><label class="camera-hidden-toggle"><input id="style-opening-enabled" type="checkbox" /><span>开场动画</span></label><label class="field"><span>开场样式</span><select id="style-opening-preset"><option value="轻 3D">轻 3D</option><option value="聚拢">聚拢</option><option value="侧滑">侧滑</option></select></label><label class="field"><span>开场时长</span><input id="style-opening-duration" type="number" min="0.18" max="10" step="0.1" value="2.2" /></label></div>
           <div class="mosaic-row"><label class="field"><span>遮罩开始</span><input id="mosaic-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="mosaic-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>样式</span><select id="mosaic-style"><option value="blur">模糊</option><option value="spotlight">聚光</option></select></label><label class="field"><span>强度</span><input id="mosaic-intensity" type="number" min="0" max="1" step="0.05" value="0.55" /></label><label class="field"><span>X/Y/W/H</span><input id="mosaic-rect" type="text" value="0.35,0.39,0.30,0.22" /></label><button id="mosaic-apply" class="secondary" type="button" disabled>添加遮罩</button></div>
           <div class="sticker-row"><label class="field"><span>贴图相对路径</span><input id="sticker-path" type="text" spellcheck="false" placeholder="assets/logo.png" /></label><label class="field"><span>开始</span><input id="sticker-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="sticker-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/W</span><input id="sticker-geometry" type="text" value="0.5,0.5,0.38" /></label><button id="sticker-apply" class="secondary" type="button" disabled>添加贴图</button></div>
           <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
@@ -217,6 +226,12 @@ const styleCursorOpacity = $("style-cursor-opacity") as HTMLInputElement;
 const styleCursorScale = $("style-cursor-scale") as HTMLInputElement;
 const styleCameraShape = $("style-camera-shape") as HTMLSelectElement;
 const styleCameraHidden = $("style-camera-hidden") as HTMLInputElement;
+const styleScreenFrame = $("style-screen-frame") as HTMLSelectElement;
+const styleScreenMotion = $("style-screen-motion") as HTMLSelectElement;
+const styleCursorMotion = $("style-cursor-motion") as HTMLSelectElement;
+const styleOpeningEnabled = $("style-opening-enabled") as HTMLInputElement;
+const styleOpeningPreset = $("style-opening-preset") as HTMLSelectElement;
+const styleOpeningDuration = $("style-opening-duration") as HTMLInputElement;
 const mosaicStart = $("mosaic-start") as HTMLInputElement;
 const mosaicDuration = $("mosaic-duration") as HTMLInputElement;
 const mosaicStyle = $("mosaic-style") as HTMLSelectElement;
@@ -757,6 +772,12 @@ function renderProjectSnapshot() {
   projectDuration.textContent = formatSeconds(snapshot.outputDuration);
   projectSegmentCount.textContent = String(snapshot.segments.length);
   projectSaveState.textContent = snapshot.session?.dirty ? "草稿未保存" : "已保存";
+  styleScreenFrame.value = snapshot.project.canvas?.screenFrame ?? "none";
+  styleScreenMotion.value = snapshot.project.motion?.screen ?? "聚焦";
+  styleCursorMotion.value = snapshot.project.motion?.cursor ?? "平滑";
+  styleOpeningEnabled.checked = snapshot.project.openingSequence?.isEnabled === true;
+  styleOpeningPreset.value = snapshot.project.openingSequence?.preset ?? "轻 3D";
+  styleOpeningDuration.value = String(snapshot.project.openingSequence?.duration ?? 2.2);
   const previous = editSegment.value;
   editSegment.innerHTML = '<option value="">未选择</option>';
   for (const segment of snapshot.segments) {
@@ -1038,7 +1059,7 @@ async function applyProjectStyles() {
   if (!projectFile || !(await flushProjectSave())) return;
   projectCommandBusy = true;
   try {
-    for (const [style, value] of [["background", styleBackground.value], ["padding", stylePadding.value], ["camera-size", styleCameraSize.value], ["cursor-size", styleCursorSize.value], ["cursor-effect", styleCursorEffect.value], ["cursor-opacity", styleCursorOpacity.value], ["cursor-scale", styleCursorScale.value], ["camera-shape", styleCameraShape.value], ["camera-hidden", String(styleCameraHidden.checked)]]) {
+    for (const [style, value] of [["background", styleBackground.value], ["padding", stylePadding.value], ["camera-size", styleCameraSize.value], ["cursor-size", styleCursorSize.value], ["cursor-effect", styleCursorEffect.value], ["cursor-opacity", styleCursorOpacity.value], ["cursor-scale", styleCursorScale.value], ["camera-shape", styleCameraShape.value], ["camera-hidden", String(styleCameraHidden.checked)], ["screen-frame", styleScreenFrame.value], ["screen-motion", styleScreenMotion.value], ["cursor-motion", styleCursorMotion.value], ["opening-enabled", String(styleOpeningEnabled.checked)], ["opening-preset", styleOpeningPreset.value], ["opening-duration", styleOpeningDuration.value]]) {
       projectSnapshot = await runProjectCommand(["edit-draft", projectFile, "style", style, value]);
     }
     renderProjectSnapshot();
