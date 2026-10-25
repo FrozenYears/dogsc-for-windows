@@ -264,6 +264,9 @@ try {
        await evaluateValue('document.querySelector("#project-preview-image").style.visibility!=="hidden"'))) {
     throw new Error(`工程 A 未进入原生 D2D/DXGI presentation 或缺少 frame statistics: ${previewStatusA}`);
   }
+  if (process.env.DOGSC_REQUIRE_PREVIEW_AUDIO === "1" && !previewStatusA.includes("音频")) {
+    throw new Error(`工程 A 未完成音频预览加载：${previewStatusA}`);
+  }
   if (process.env.DOGSC_REQUIRE_CAMERA === "1" && !previewStatusA.includes("camera")) {
     throw new Error(`工程 A 未产生摄像头 scene 层: ${previewStatusA}`);
   }

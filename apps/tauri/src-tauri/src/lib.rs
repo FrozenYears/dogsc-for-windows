@@ -2,8 +2,9 @@
 
 use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[tauri::command]
 fn app_version() -> &'static str {
@@ -28,6 +29,21 @@ fn open_windows_settings(page: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn prepare_preview_audio(app: AppHandle) -> Result<String, String> {
+    let cache = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("无法取得应用数据目录：{error}"))?
+        .join("preview-cache");
+    std::fs::create_dir_all(&cache).map_err(|error| format!("无法创建预览音频缓存目录：{error}"))?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("系统时间无效：{error}"))?
+        .as_millis();
+    Ok(cache.join(format!("preview-{stamp}.m4a")).to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 fn preview_host_hwnd(window: WebviewWindow) -> Result<u64, String> {
     window.hwnd().map(|hwnd| hwnd.0 as usize as u64).map_err(|error| error.to_string())
 }
@@ -35,7 +51,7 @@ fn preview_host_hwnd(window: WebviewWindow) -> Result<u64, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![app_version, preview_host_hwnd, open_windows_settings])
+        .invoke_handler(tauri::generate_handler![app_version, preview_host_hwnd, open_windows_settings, prepare_preview_audio])
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "打开 DogSC Studio", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;

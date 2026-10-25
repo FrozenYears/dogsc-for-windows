@@ -1,7 +1,7 @@
 import { homeDir, join } from "@tauri-apps/api/path";
 import { Command } from "@tauri-apps/plugin-shell";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import "./styles.css";
 
 type CaptureChild = {
@@ -28,6 +28,7 @@ type ProjectSegment = {
 type ProjectDocument = {
   title: string;
   version: number;
+  capture?: { recordsSystemAudio?: boolean; recordsMicrophone?: boolean };
   canvas?: { screenFrame?: string };
   motion?: { screen?: string; cursor?: string };
   openingSequence?: { isEnabled?: boolean; preset?: string; duration?: number };
@@ -76,6 +77,11 @@ let previewOverlayMode = false;
 let previewOverlayBounds = "";
 let previewWriteChain = Promise.resolve();
 let previewOverlayUpdateScheduled = false;
+let previewAudio: HTMLAudioElement | null = null;
+let previewAudioProject = "";
+let previewAudioPath = "";
+let previewAudioPromise: Promise<void> | null = null;
+let previewAudioError = "";
 
 const defaultDirectory = async () => join(await homeDir(), "Videos", "DogSC");
 
@@ -123,7 +129,7 @@ app.innerHTML = `
             <main class="canvas-column">
               <div class="canvas-stage">
                 <div class="canvas-dots"></div>
-                <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><span class="preview-hint">播放控制在时间线</span><span id="project-preview-status">未加载预览</span></div></div>
+                <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><audio id="project-preview-audio" preload="auto"></audio><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><span class="preview-hint">播放控制在时间线</span><span id="project-preview-status">未加载预览</span></div></div>
               </div>
               <div class="canvas-footer"><span>画布</span><span>·</span><span id="project-duration">—</span><span>·</span><span id="project-segment-count">— 片段</span></div>
             </main>
@@ -199,6 +205,7 @@ const editMoveDown = $("edit-move-down") as HTMLButtonElement;
 const projectPreviewImage = $("project-preview-image") as HTMLImageElement;
 const projectPreviewFrame = $("project-preview-frame") as HTMLButtonElement;
 const projectPreviewStatus = $("project-preview-status");
+const projectPreviewAudio = $("project-preview-audio") as HTMLAudioElement;
 const projectPreviewPlay = $("project-preview-play") as HTMLButtonElement;
 const projectSaveState = $("project-save-state");
 const projectSave = $("project-save") as HTMLButtonElement;
@@ -465,11 +472,63 @@ function updatePreviewStatus(frame = latestPreviewFrame) {
   if (!frame) return;
   const surface = frame.presentation === "dxgi" ? "DXGI swapchain" : frame.decodeSurface === "DXGI" ? "DXGI readback" : frame.dxgiManager ? "DXGI manager/CPU readback" : "CPU fallback";
   const layers = [frame.composed ? "D2D scene" : "screen frame", frame.camera ? "camera" : "", frame.cursor ? "cursor" : "", frame.click ? "click" : "", frame.spotlight ? "spotlight" : "", frame.stickers ? "stickers" : "", frame.screenFrame ? "screen-frame" : "", frame.opening ? "opening" : "", frame.screenMotion ? "screen-motion" : ""].filter(Boolean).join("+");
+  const audio = previewAudioProject === projectFile ? " · 音频" : previewAudioError ? ` · 音频失败:${previewAudioError.slice(0, 80)}` : "";
   const refresh = frame.frameStatistics ? ` · vblank ${frame.frameStatistics.syncRefreshCount}` : "";
-  projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s · ${previewFrameRate().toFixed(0)} fps · ${layers} · ${surface}${refresh} · 帧 ${previewFramesPresented}/${previewFramesReceived} · 丢帧 ${previewFramesDropped} · 背压 ${previewBackpressureSkips}${frame.compositionError ? ` · 合成回退:${frame.compositionError}` : ""}`;
+  projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s · ${previewFrameRate().toFixed(0)} fps · ${layers} · ${surface}${audio}${refresh} · 帧 ${previewFramesPresented}/${previewFramesReceived} · 丢帧 ${previewFramesDropped} · 背压 ${previewBackpressureSkips}${frame.compositionError ? ` · 合成回退:${frame.compositionError}` : ""}`;
+}
+
+function pausePreviewAudio() {
+  previewAudio?.pause();
+}
+
+async function resetPreviewAudio() {
+  pausePreviewAudio();
+  previewAudioProject = "";
+  previewAudioPath = "";
+  previewAudioError = "";
+  previewAudioPromise = null;
+  projectPreviewAudio.removeAttribute("src");
+  projectPreviewAudio.load();
+}
+
+async function ensurePreviewAudio() {
+  if (!projectFile) return;
+  const capture = projectSnapshot?.project.capture;
+  if (capture && capture.recordsSystemAudio !== true && capture.recordsMicrophone !== true) return;
+  if (previewAudioProject === projectFile && previewAudio?.readyState && previewAudio.readyState >= 1) return;
+  if (previewAudioPromise) return await previewAudioPromise;
+  const targetProject = projectFile;
+  previewAudioError = "";
+  previewAudioPromise = (async () => {
+    projectLog("正在准备预览音频…", true);
+    const output = await invoke<string>("prepare_preview_audio");
+    await runProjectExport(targetProject, output, "m4a");
+    if (projectFile !== targetProject) return;
+    const audio = projectPreviewAudio;
+    audio.src = convertFileSrc(output);
+    audio.load();
+    await new Promise<void>((resolve, reject) => {
+      const ready = () => { cleanup(); resolve(); };
+      const failed = () => { cleanup(); reject(new Error("预览音频加载失败")); };
+      const cleanup = () => { audio.removeEventListener("loadedmetadata", ready); audio.removeEventListener("error", failed); };
+      audio.addEventListener("loadedmetadata", ready, { once: true });
+      audio.addEventListener("error", failed, { once: true });
+    });
+    previewAudio = audio;
+    previewAudioProject = targetProject;
+    previewAudioPath = output;
+    projectLog("预览音频已就绪", false);
+  previewAudioError = "";
+  })();
+  try {
+    await previewAudioPromise;
+  } finally {
+    previewAudioPromise = null;
+  }
 }
 
 async function stopPreviewStream() {
+  pausePreviewAudio();
   ++previewGeneration;
   previewStarting = false;
   if (previewChild) {
@@ -628,8 +687,9 @@ async function presentPreviewLine(line: string, generation: number) {
 
 
   if (previewPlaying) {
-    const next = payload.time + 1 / 30;
+    const next = previewAudio && !previewAudio.paused ? Math.max(payload.time + 1 / 30, previewAudio.currentTime) : payload.time + 1 / 30;
     if (projectSnapshot && previewAtEnd(next, projectSnapshot.outputDuration)) {
+      previewAudio?.pause();
       previewPlaying = false;
       projectPreviewPlay.textContent = "播放";
     } else {
@@ -762,12 +822,25 @@ async function togglePreviewPlay() {
   if (!projectFile) return;
   if (previewPlaying) {
     previewPlaying = false;
+    previewAudio?.pause();
     projectPreviewPlay.textContent = "播放";
     return;
   }
   if (projectSnapshot && previewAtEnd(Number(editTime.value), projectSnapshot.outputDuration)) editTime.value = "0";
+  try {
+    await ensurePreviewAudio();
+    if (previewAudio) {
+      const requested = Number(editTime.value) || 0;
+      previewAudio.currentTime = Math.max(0, Math.min(requested, previewAudio.duration || requested));
+      await previewAudio.play();
+    }
+  } catch (error) {
+    previewAudioError = String(error);
+    projectLog(`音频预览不可用，将继续播放画面：${String(error)}`, false);
+  }
   await startPreviewStream();
   if (!previewChild) {
+    previewAudio?.pause();
     previewPlaying = false;
     return;
   }
@@ -1082,6 +1155,7 @@ async function loadProject(value: string) {
   if (!path) { projectLog("请输入 project.json 路径", false); return; }
   if (!(await flushProjectSave())) return;
   await stopPreviewStream();
+  await resetPreviewAudio();
   projectCommandBusy = true;
   projectOpen.disabled = true;
   projectLog(`正在打开 ${path}`, true);
@@ -1271,6 +1345,16 @@ projectRenameName.addEventListener("input", updateEditorButtons);
 projectRename.addEventListener("click", () => { void renameProject(); });
 projectPreviewFrame.addEventListener("click", () => { void loadPreviewFrame(); });
 projectPreviewPlay.addEventListener("click", () => { projectPreviewStatus.textContent = "正在启动预览…"; void togglePreviewPlay(); });
+editTime.addEventListener("input", () => {
+  const time = Number(editTime.value);
+  if (!previewPlaying && previewAudio && Number.isFinite(time)) previewAudio.currentTime = Math.max(0, time);
+});
+projectPreviewAudio.addEventListener("ended", () => {
+  if (previewPlaying) {
+    previewPlaying = false;
+    projectPreviewPlay.textContent = "播放";
+  }
+});
 const previewOverlayResizeObserver = new ResizeObserver(schedulePreviewOverlayBounds);
 previewOverlayResizeObserver.observe(projectPreviewImage);
 window.addEventListener("scroll", schedulePreviewOverlayBounds, true);
