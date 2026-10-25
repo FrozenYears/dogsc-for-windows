@@ -766,6 +766,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             bool scene_has_spotlight = false;
             bool scene_has_screen_frame = false;
             bool scene_has_opening = false;
+            std::string composition_error;
             if (compositor) {
                 try {
                     const auto texture = texture_from_bgra(overlay->device(), overlay->context(),
@@ -818,6 +819,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     composed = true;
                 } catch (const std::exception& error) {
                     std::cerr << "D2D preview composition failed; using source frame: " << error.what() << '\n';
+                    composition_error = error.what();
                     compositor.reset();
                 }
             }
@@ -840,7 +842,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
                 {"spotlight", scene_has_spotlight}, {"stickers", scene_has_stickers},
-                {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening},
+                {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening}, {"compositionError", composition_error},
                 {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}};
             if (const auto statistics = overlay->frame_statistics()) {
                 response["frameStatistics"] = json{{"presentCount", statistics->present_count},

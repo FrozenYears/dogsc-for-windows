@@ -45,7 +45,7 @@ type ProjectLibraryItem = {
 
 type CaptureTargets = { monitors: Array<{ index: number; device: string; width: number; height: number; primary: boolean }>; windows: Array<{ hwnd: number; title: string; minimized: boolean }> };
 type ProjectLibrary = { root: string; projects: ProjectLibraryItem[] };
-type PreviewFrame = { time: number; width: number; height: number; mime?: string; data?: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean; presentation?: "dxgi" | "image"; presented?: boolean; composed?: boolean; camera?: boolean; cursor?: boolean; click?: boolean; spotlight?: boolean; stickers?: boolean; screenFrame?: boolean; opening?: boolean; presentedFrames?: number; droppedFrames?: number; frameStatistics?: { presentCount: number; presentRefreshCount: number; syncRefreshCount: number; syncQpcTime: number } };
+type PreviewFrame = { time: number; width: number; height: number; mime?: string; data?: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean; presentation?: "dxgi" | "image"; presented?: boolean; composed?: boolean; camera?: boolean; cursor?: boolean; click?: boolean; spotlight?: boolean; stickers?: boolean; screenFrame?: boolean; opening?: boolean; compositionError?: string; presentedFrames?: number; droppedFrames?: number; frameStatistics?: { presentCount: number; presentRefreshCount: number; syncRefreshCount: number; syncQpcTime: number } };
 type PreviewImageFrame = PreviewFrame & { mime: string; data: string };
 
 let projectSnapshot: ProjectSnapshot | null = null;
@@ -430,7 +430,7 @@ function updatePreviewStatus(frame = latestPreviewFrame) {
   const surface = frame.presentation === "dxgi" ? "DXGI swapchain" : frame.decodeSurface === "DXGI" ? "DXGI readback" : frame.dxgiManager ? "DXGI manager/CPU readback" : "CPU fallback";
   const layers = [frame.composed ? "D2D scene" : "screen frame", frame.camera ? "camera" : "", frame.cursor ? "cursor" : "", frame.click ? "click" : "", frame.spotlight ? "spotlight" : "", frame.stickers ? "stickers" : "", frame.screenFrame ? "screen-frame" : "", frame.opening ? "opening" : ""].filter(Boolean).join("+");
   const refresh = frame.frameStatistics ? ` · vblank ${frame.frameStatistics.syncRefreshCount}` : "";
-  projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s · ${previewFrameRate().toFixed(0)} fps · ${layers} · ${surface}${refresh} · 帧 ${previewFramesPresented}/${previewFramesReceived} · 丢帧 ${previewFramesDropped} · 背压 ${previewBackpressureSkips}`;
+  projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s · ${previewFrameRate().toFixed(0)} fps · ${layers} · ${surface}${refresh} · 帧 ${previewFramesPresented}/${previewFramesReceived} · 丢帧 ${previewFramesDropped} · 背压 ${previewBackpressureSkips}${frame.compositionError ? ` · 合成回退:${frame.compositionError}` : ""}`;
 }
 
 async function stopPreviewStream() {
