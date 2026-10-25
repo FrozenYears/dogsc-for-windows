@@ -441,6 +441,16 @@ async function runProjectExport(path: string, output: string): Promise<{ output:
     void command.spawn().then((child) => { exportChild = child; updateEditorButtons(); }).catch(fail);
   });
 }
+async function cleanupExportPartial(output: string) {
+  const command = Command.sidecar("binaries/dogsc_capture", ["project", "cleanup-output", `${output}.partial`]);
+  await new Promise<void>((resolve, reject) => {
+    let errors = "";
+    command.stderr.on("data", (line) => { errors += String(line); });
+    command.on("error", reject);
+    command.on("close", (event) => event.code === 0 ? resolve() : reject(new Error(errors || `清理导出 partial 失败（exit ${event.code ?? "unknown"}）`)));
+    void command.spawn().catch(reject);
+  });
+}
 
 function resetPreviewStats() {
   previewFramesReceived = 0;
@@ -1108,9 +1118,11 @@ async function applyProjectStyles() {
 }
 async function cancelProjectExport() {
   if (!exportChild) return;
+  const output = projectExportPath.value.trim();
   projectLog("正在取消导出……", true);
   try { await exportChild.kill(); } catch (error) { projectLog(`取消导出失败：${String(error)}`, false); }
   exportChild = null;
+  try { await cleanupExportPartial(output); } catch (error) { projectLog(`partial 清理失败：${String(error)}`, false); }
   projectCommandBusy = false;
   updateEditorButtons();
 }
@@ -1124,6 +1136,9 @@ async function exportProject() {
     const result = await runProjectExport(projectFile, projectExportPath.value.trim());
     projectLog(`导出完成：${result.frameCount} 帧，${result.duration.toFixed(2)}s`, false);
   } catch (error) {
+    try { await cleanupExportPartial(projectExportPath.value.trim()); } catch (cleanupError) {
+      projectLog(`导出失败且 partial 清理失败：${String(cleanupError)}`, false);
+    }
     projectLog(`导出失败：${String(error)}`, false);
   } finally {
     projectCommandBusy = false;

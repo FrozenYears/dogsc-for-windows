@@ -31,7 +31,7 @@
 | Render | 屏幕 3D/开场 | opening evaluator、screen-frame scene、screen/cursor motion 与 opening preset/duration editor controls 已接入并通过 GUI smoke；screen 3D 透视控件、导出路径与动画像素基准未完成 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界、UI 控件 |
 | Export | SourceReader 时间线合成 | P4 partial：`TimelineMap` + `TimelineMediaPlan` 已驱动单源视频导出主屏分段/裁切输出域、摄像头 placement 与 system audio placement；edited timeline 3 帧/0.1s、AAC 48k/2ch/12s smoke 通过；预览 stream、麦克风、变速边界、取消/失败恢复与长时同步未完成 | export pipeline + TimelineMediaPlan + MediaWriter | xiaoying export.js；adrian VideoExporter | 分段/变速/摄像头/音频映射、重开 |
 | Export | MP4/M4A 最终导出 | P4 partial：H.264 MP4 prototype 已含 AAC system audio 轨；当前无独立 M4A、麦克风、多轨音频、取消和失败恢复 | MF/FFmpeg dynamic | 两仓库 export cancel | MP4/M4A 可重开、取消无半成品 |
-| Export | 进度/取消/重试 | P4 partial：progress JSON、`.partial` 原子收尾与 Tauri 取消按钮已接入；取消后最终输出不被 rename，partial 清理/失败恢复/重试 smoke 未完成 | Tauri orchestration + sidecar | adrian export dialog | 取消后无最终半成品、失败清理、重试 |
+| Export | 进度/取消/重试 | P4 partial：progress JSON、`.partial` 原子收尾、Tauri 取消按钮与 sidecar `cleanup-output` 已接入并通过 cleanup smoke；失败重试与完整取消 GUI smoke 未完成 | Tauri orchestration + sidecar | adrian export dialog | 取消后无最终半成品、失败清理、重试 |
 | Shell | Tauri 录制壳 | 已验收 | `apps/tauri` | xiaoying Electron UI 仅作交互参照 | 安装包真实 GUI |
 | Shell | 中文基础界面 | 已实现部分 | Tauri | 两仓库布局/检查器 | UI smoke |
 | Shell | 英文/本地化切换 | 未实现 | localization | xiaoying localization | 运行时切换 |

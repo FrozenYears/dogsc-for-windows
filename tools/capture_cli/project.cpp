@@ -14,6 +14,7 @@
 #include <objbase.h>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
 #include <string_view>
 #include <windows.h>
 
@@ -561,6 +562,13 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
     if (action == L"rename") {
         if (argument_count != 1) throw std::invalid_argument("rename 需要 new-name");
         std::cout << rename_project(project_path, arguments[0]).dump(2) << '\n';
+        return 0;
+    }
+    if (action == L"cleanup-output") {
+        if (argument_count != 0) throw std::invalid_argument("cleanup-output 不接受额外参数");
+        std::error_code error;
+        std::filesystem::remove(project_path, error);
+        if (error) throw std::system_error(error, "清理导出 partial 失败");
         return 0;
     }
     const auto normalized_path = normalize_project_path(project_path);
