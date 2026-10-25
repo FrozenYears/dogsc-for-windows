@@ -206,6 +206,13 @@ try {
     socket.addEventListener("error", rejectSocket, { once: true });
   });
   await waitFor("Tauri 工程控件就绪", async () => await evaluateValue('Boolean(document.querySelector("#project-path") && document.querySelector("#project-preview-play"))'));
+  if (process.env.DOGSC_EXERCISE_SETTINGS === "1") {
+    await evaluateValue('document.querySelector("#settings-button").click(); true');
+    await waitFor("settings modal 打开", async () => await evaluateValue('Boolean(document.querySelector(".settings-modal"))'));
+    await evaluateValue('document.querySelector(".settings-check").click(); true');
+    await waitFor("settings capability 检查", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.length > 0'));
+    await evaluateValue('document.querySelector(".settings-close").click(); true');
+  }
   if (process.env.DOGSC_EXERCISE_REGION === "1") {
     await evaluateValue('document.querySelector("#region-pick").click(); true');
     await waitFor("区域选择器打开", async () => await evaluateValue('Boolean(document.querySelector(".region-surface"))'));
