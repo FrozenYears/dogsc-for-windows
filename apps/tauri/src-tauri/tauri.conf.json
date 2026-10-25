@@ -33,7 +33,9 @@
     "targets": ["nsis"],
     "externalBin": ["binaries/dogsc_capture"],
     "resources": {
-      "binaries/*.dll": ""
+      "binaries/*.dll": "",
+      "../../../LICENSE": "LICENSE",
+      "../../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
     }
   }
 }
