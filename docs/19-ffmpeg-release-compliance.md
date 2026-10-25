@@ -35,7 +35,7 @@ Get-ChildItem .\apps\tauri\src-tauri\binaries -Filter '*.dll' -File |
 
 vcpkg list
 ```
-`tools/release/collect-ffmpeg-manifest.ps1` 会从 sidecar 目录生成 DLL 文件名、大小和 SHA-256 清单；没有传入源码归档时，清单明确保留 `sourceArchiveRequiredBeforeRelease: true`，不能作为完整合规材料替代品。
+`tools/release/collect-ffmpeg-manifest.ps1` 会从 sidecar 目录生成 DLL 文件名、大小和 SHA-256 清单；传入 `-InstallerPath` 时同时记录 NSIS 安装包哈希。没有传入源码归档时，清单明确保留 `sourceArchiveRequiredBeforeRelease: true`，不能作为完整合规材料替代品。
 
 FFmpeg 版本、配置参数、源码归档哈希和补丁哈希必须与发布归档中的机器可读清单相互对应；只记录 DLL 文件名不足以完成核验。
 

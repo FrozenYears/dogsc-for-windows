@@ -1,7 +1,8 @@
 param(
     [string]$SidecarDirectory = (Join-Path $PSScriptRoot "../../apps/tauri/src-tauri/binaries"),
     [string]$OutputPath = (Join-Path $PSScriptRoot "../../out/release/ffmpeg-dll-manifest.json"),
-    [string]$SourceArchive = ""
+    [string]$SourceArchive = "",
+    [string]$InstallerPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,6 +23,15 @@ if ($SourceArchive) {
         sha256 = (Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
 }
+$installer = $null
+if ($InstallerPath) {
+    $package = Get-Item -LiteralPath $InstallerPath
+    $installer = [ordered]@{
+        path = $package.FullName
+        bytes = $package.Length
+        sha256 = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
 
 $manifest = [ordered]@{
     schema = 1
@@ -30,6 +40,7 @@ $manifest = [ordered]@{
     gplOrNonfreeBuildsAllowed = $false
     sourceArchive = $source
     sourceArchiveRequiredBeforeRelease = $true
+    installer = $installer
     dlls = $entries
 }
 
