@@ -683,6 +683,9 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
     }
     RecorderProject project;
     double duration = 0;
+    TimelineMap timeline;
+    TimelineMediaPlan media_plan;
+    std::optional<TimelineMediaPlan> camera_plan;
     std::optional<ProjectPointerTrack> pointer_track;
     CursorAssetMetrics cursor_metrics;
     std::vector<std::pair<CursorAssetID, CursorAssetMetrics>> cursor_metrics_by_asset;
@@ -697,17 +700,19 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             if (!project.media || !project.media->screen.source_end_time) {
                 throw std::runtime_error("工程缺少屏幕媒体时长");
             }
-            duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
-            if (!std::isfinite(duration) || duration <= 0) throw std::runtime_error("屏幕媒体时长无效");
+            const auto source_duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
+            if (!std::isfinite(source_duration) || source_duration <= 0) throw std::runtime_error("屏幕媒体时长无效");
+            if (const auto timeline_error = TimelineMap::create(project.source_sequence, source_duration, timeline)) {
+                throw std::runtime_error(std::string("时间线解析失败: ") + timeline_error->message());
+            }
+            media_plan = TimelineMediaPlan::from_primary(timeline);
+            duration = media_plan.output_duration();
+            if (!std::isfinite(duration) || duration <= 0) throw std::runtime_error("输出时间线时长无效");
             std::string error;
             compositor = D2DFrameCompositor::create(overlay->device(), error);
             if (!compositor) throw std::runtime_error(error);
             const auto events = pointer_events(normalized, project);
             if (!events.empty()) {
-                TimelineMap timeline;
-                if (const auto timeline_error = TimelineMap::create(project.source_sequence, duration, timeline)) {
-                    throw std::runtime_error(std::string("指针时间线解析失败: ") + timeline_error->message());
-                }
                 pointer_track.emplace(ProjectPointerTrack::from_timeline(timeline, events, project.motion));
             }
             cursor_metrics.asset_id = CursorAssetID::system_arrow().raw_value;
@@ -732,6 +737,13 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     std::cerr << "Camera preview source unavailable; continuing without camera: "
                               << error.what() << '\n';
                 }
+            }
+            if (camera_reader && project.media && project.media->camera) {
+                const auto& reference = *project.media->camera;
+                const auto available_duration = reference.source_end_time
+                    ? std::max(*reference.source_end_time - reference.source_start_time, 0.0) : duration;
+                const auto placement = MediaTimelinePlacement::make(reference, 0, available_duration, duration);
+                camera_plan = TimelineMediaPlan::from_auxiliary(timeline, placement, reference.sync_anchors);
             }
         } catch (const std::exception& error) {
             initialization_error = error.what();
@@ -771,7 +783,9 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                 continue;
             }
             std::uint32_t width = 0, height = 0;
-            auto pixels = reader.read_bgra(static_cast<std::int64_t>(seconds * 10000000),
+            const auto source_time = media_plan.source_time_at_output_time(seconds);
+            if (!source_time) throw std::runtime_error("预览时间线存在不可读取的主媒体缺口");
+            auto pixels = reader.read_bgra(static_cast<std::int64_t>(*source_time * 10000000),
                 max_width, width, height, true);
             bool presented = false;
             bool composed = false;
@@ -796,15 +810,11 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     }
                     winrt::com_ptr<ID3D11Texture2D> camera_texture;
                     std::uint32_t camera_width = 0, camera_height = 0;
-                    if (camera_reader && project.media && project.media->camera) {
-                        const auto& reference = *project.media->camera;
-                        const double timeline_time = seconds - std::max(reference.start_offset, 0.0);
-                        const double source_scale = reference.source_time_scale.value_or(1.0);
-                        if (timeline_time >= 0 && std::isfinite(source_scale) && source_scale > 0) {
-                            const auto source_time = std::max(reference.source_start_time, 0.0) +
-                                timeline_time * source_scale;
+                    if (camera_reader && camera_plan) {
+                        const auto camera_source_time = camera_plan->source_time_at_output_time(seconds);
+                        if (camera_source_time) {
                             auto camera_pixels = camera_reader->read_bgra(
-                                static_cast<std::int64_t>(source_time * 10000000), max_width,
+                                static_cast<std::int64_t>(*camera_source_time * 10000000), max_width,
                                 camera_width, camera_height, true);
                             camera_texture = texture_from_bgra(overlay->device(), overlay->context(),
                                 camera_pixels, camera_width, camera_height);
