@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 
@@ -22,17 +22,47 @@ const appPath = resolve(appArgument);
 let projectA = projectPath(projectAArgument);
 const projectB = projectPath(projectBArgument);
 let temporaryProjectA = "";
-if (process.env.DOGSC_REQUIRE_CURSOR === "1") {
-  temporaryProjectA = mkdtempSync(join(tmpdir(), "dogsc-cursor-smoke-"));
+if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1") {
+  temporaryProjectA = mkdtempSync(join(tmpdir(), "dogsc-scene-smoke-"));
   const sourceProject = JSON.parse(readFileSync(projectA, "utf8"));
-  sourceProject.cursorStyle = { ...sourceProject.cursorStyle, assetID: "system.arrow" };
+  if (process.env.DOGSC_REQUIRE_CURSOR === "1") {
+    sourceProject.cursorStyle = { ...sourceProject.cursorStyle, assetID: "system.arrow" };
+  }
   for (const reference of Object.values(sourceProject.media ?? {})) {
     if (!reference?.relativePath) continue;
     const source = resolve(projectA, "..", reference.relativePath);
     copyFileSync(source, join(temporaryProjectA, reference.relativePath));
   }
+  if (process.env.DOGSC_REQUIRE_STICKERS === "1") {
+    mkdirSync(join(temporaryProjectA, "assets"), { recursive: true });
+    writeFileSync(join(temporaryProjectA, "assets", "logo.png"), Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+    sourceProject.timeline = sourceProject.timeline ?? {};
+    sourceProject.timeline.stickerClips = [{
+      id: "cdf57400-255e-4149-9a82-b5b579815e83",
+      timing: { startTime: 0, duration: 1 }, relativePath: "assets/logo.png",
+      position: { x: 0.5, y: 0.5 }, width: 0.18, rotationDegrees: 0, opacity: 1,
+      cornerRadius: 8, borderWidth: 0, borderColor: "#FFFFFF", shadowOpacity: 0,
+      shadowRadius: 0, shadowOffsetX: 0, shadowOffsetY: 0, animation: "pop",
+      animationCurve: "swift", enterDuration: 0.2, exitDuration: 0.2,
+      backdropBlur: 0, backdropBlurIncludesCamera: false, hidesScreen: false,
+      hidesCamera: false, layerIndex: 0,
+    }];
+  }
+  if (process.env.DOGSC_REQUIRE_SPOTLIGHT === "1") {
+    sourceProject.timeline = sourceProject.timeline ?? {};
+    sourceProject.timeline.mosaicClips = [{
+      id: "ebfabc8c-30b9-4e47-b43a-a13c747ee98e",
+      timing: { startTime: 0, duration: 1 }, sourceRect: { x: 0.3, y: 0.3, width: 0.4, height: 0.3 },
+      cornerRadius: 0.08, style: "spotlight", intensity: 0.7, spotlightDimming: 0.22,
+      transitionStyle: "none", transitionInDuration: 0.3, transitionOutDuration: 0.3,
+    }];
+  }
   const pointerPath = join(temporaryProjectA, sourceProject.media.pointerEvents.relativePath);
-  const pointerText = readFileSync(pointerPath, "utf8").replaceAll("system.hidden", "system.arrow").replaceAll('"kind":"move"', '"kind":"leftClick"');
+  let pointerText = readFileSync(pointerPath, "utf8");
+  if (process.env.DOGSC_REQUIRE_CURSOR === "1") {
+    pointerText = pointerText.replaceAll("system.hidden", "system.arrow").replaceAll('"kind":"move"', '"kind":"leftClick"');
+  }
   writeFileSync(pointerPath, pointerText);
   writeFileSync(join(temporaryProjectA, "project.json"), JSON.stringify(sourceProject, null, 2));
   projectA = join(temporaryProjectA, "project.json");
@@ -171,7 +201,9 @@ try {
     const status = await evaluateValue('document.querySelector("#project-preview-status").textContent');
     if (status.startsWith("预览失败") || status.startsWith("预览错误")) throw new Error(`工程 A 预览失败: ${status}`);
     const ready = status.includes("丢帧") &&
-      (process.env.DOGSC_REQUIRE_CURSOR !== "1" || status.includes("click"));
+      (process.env.DOGSC_REQUIRE_CURSOR !== "1" || status.includes("click")) &&
+      (process.env.DOGSC_REQUIRE_STICKERS !== "1" || status.includes("stickers")) &&
+      (process.env.DOGSC_REQUIRE_SPOTLIGHT !== "1" || status.includes("spotlight"));
     if (ready) previewStatusA = status;
     return ready;
   });
@@ -189,6 +221,12 @@ try {
   }
   if (process.env.DOGSC_REQUIRE_CURSOR === "1" && !previewStatusA.includes("click")) {
     throw new Error(`工程 A 未产生光标点击效果 scene: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_STICKERS === "1" && !previewStatusA.includes("stickers")) {
+    throw new Error(`工程 A 未产生贴图 scene 层: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" && !previewStatusA.includes("spotlight")) {
+    throw new Error(`工程 A 未产生 spotlight scene 层: ${previewStatusA}`);
   }
   if (process.env.DOGSC_EXERCISE_WINDOW === "1") {
     const beforeWindow = windowCommand("get");

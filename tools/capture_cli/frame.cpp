@@ -19,6 +19,7 @@
 #include <wincodec.h>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <unordered_map>
 #include <string>
 #include <vector>
 #include <winrt/base.h>
@@ -510,6 +511,47 @@ winrt::com_ptr<ID3D11Texture2D> texture_from_bgra(ID3D11Device* device, ID3D11De
     return texture;
 }
 
+winrt::com_ptr<ID3D11Texture2D> texture_from_file(ID3D11Device* device, ID3D11DeviceContext* context,
+                                                  const std::filesystem::path& path) {
+    winrt::com_ptr<IWICImagingFactory> factory;
+    winrt::check_hresult(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        __uuidof(IWICImagingFactory), factory.put_void()));
+    winrt::com_ptr<IWICBitmapDecoder> decoder;
+    winrt::check_hresult(factory->CreateDecoderFromFilename(path.wstring().c_str(), nullptr,
+        GENERIC_READ, WICDecodeMetadataCacheOnLoad, decoder.put()));
+    winrt::com_ptr<IWICBitmapFrameDecode> frame;
+    winrt::check_hresult(decoder->GetFrame(0, frame.put()));
+    winrt::com_ptr<IWICFormatConverter> converter;
+    winrt::check_hresult(factory->CreateFormatConverter(converter.put()));
+    winrt::check_hresult(converter->Initialize(frame.get(), GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom));
+    UINT width = 0, height = 0;
+    winrt::check_hresult(converter->GetSize(&width, &height));
+    if (!width || !height || width > 4096 || height > 4096) {
+        throw std::runtime_error("贴图尺寸必须在 1..4096 范围内");
+    }
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4);
+    winrt::check_hresult(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(pixels.size()), pixels.data()));
+    return texture_from_bgra(device, context, pixels, width, height);
+}
+
+std::unordered_map<std::string, winrt::com_ptr<ID3D11Texture2D>> load_sticker_textures(
+    const std::filesystem::path& project_path, const RecorderProject& project,
+    ID3D11Device* device, ID3D11DeviceContext* context) {
+    std::unordered_map<std::string, winrt::com_ptr<ID3D11Texture2D>> textures;
+    for (const auto& clip : project.sticker_clips) {
+        if (clip.relative_path.empty() || textures.contains(clip.relative_path)) continue;
+        try {
+            textures.emplace(clip.relative_path,
+                texture_from_file(device, context, safe_media_path(project_path, clip.relative_path, "贴图")));
+        } catch (const std::exception& error) {
+            std::cerr << "Sticker texture unavailable; skipping " << clip.relative_path << ": "
+                      << error.what() << '\n';
+        }
+    }
+    return textures;
+}
+
 json export_video_json(const std::filesystem::path& project_path, const std::filesystem::path& output,
                        int frame_rate) {
     const auto project = load_project(project_path);
@@ -547,6 +589,7 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
         if (asset != CursorAssetID::hidden()) cursor_metrics_by_asset.emplace_back(asset, cursor_metrics);
     }
     const auto cursor_texture = texture_from_bgra(device.get(), context.get(), default_cursor_pixels(), 44, 44);
+    auto sticker_textures = load_sticker_textures(project_path, project, device.get(), context.get());
     std::unique_ptr<FrameReader> camera_reader;
     if (project.media && project.media->camera && !project.camera.is_hidden) {
         camera_reader = std::make_unique<FrameReader>(
@@ -591,6 +634,9 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
         resources.screen = texture.get();
         resources.camera = camera_texture.get();
         resources.cursor = cursor_texture.get();
+        for (const auto& [path, sticker_texture] : sticker_textures) {
+            resources.stickers[path] = sticker_texture.get();
+        }
         if (!compositor->compose(plan, resources)) throw std::runtime_error(std::string(compositor->last_error()));
         writer.write_video(compositor->output_texture(), index * frame_duration, frame_duration);
     }
@@ -628,6 +674,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
     winrt::com_ptr<ID3D11Texture2D> cursor_texture;
     std::unique_ptr<FrameReader> camera_reader;
     std::unique_ptr<D2DFrameCompositor> compositor;
+    std::unordered_map<std::string, winrt::com_ptr<ID3D11Texture2D>> sticker_textures;
     if (overlay) {
         try {
             project = load_project(normalized);
@@ -660,6 +707,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             }
             cursor_texture = texture_from_bgra(overlay->device(), overlay->context(),
                 default_cursor_pixels(), 44, 44);
+            sticker_textures = load_sticker_textures(normalized, project, overlay->device(), overlay->context());
             if (project.media && project.media->camera && !project.camera.is_hidden) {
                 try {
                     camera_reader = std::make_unique<FrameReader>(
@@ -714,6 +762,8 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             bool scene_has_camera = false;
             bool scene_has_cursor = false;
             bool scene_has_click = false;
+            bool scene_has_stickers = false;
+            bool scene_has_spotlight = false;
             if (compositor) {
                 try {
                     const auto texture = texture_from_bgra(overlay->device(), overlay->context(),
@@ -748,10 +798,16 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     scene_has_camera = plan.scene.camera.has_value();
                     scene_has_cursor = plan.scene.cursor.has_value();
                     scene_has_click = plan.scene.cursor && plan.scene.cursor->click_geometry.has_value();
+                    scene_has_spotlight = std::any_of(plan.scene.screen.mosaics.begin(), plan.scene.screen.mosaics.end(),
+                        [](const auto& item) { return item.style == MosaicEffectStyle::kSpotlight && item.transition_progress > 0; });
+                    scene_has_stickers = !plan.scene.stickers.empty();
                     FrameRenderResources resources;
                     resources.screen = texture.get();
                     resources.camera = camera_texture.get();
                     resources.cursor = cursor_texture.get();
+                    for (const auto& [path, sticker_texture] : sticker_textures) {
+                        resources.stickers[path] = sticker_texture.get();
+                    }
                     if (!compositor->compose(plan, resources)) {
                         throw std::runtime_error(std::string(compositor->last_error()));
                     }
@@ -780,6 +836,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
                 {"composed", composed}, {"camera", scene_has_camera}, {"cursor", scene_has_cursor}, {"click", scene_has_click},
+                {"spotlight", scene_has_spotlight}, {"stickers", scene_has_stickers},
                 {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}};
             if (const auto statistics = overlay->frame_statistics()) {
                 response["frameStatistics"] = json{{"presentCount", statistics->present_count},

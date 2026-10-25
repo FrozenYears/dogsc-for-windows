@@ -26,8 +26,8 @@
 | Render | 光标/点击效果 | P3 preview 与单源 H.264 export 已接入 pointer.jsonl、系统光标事件、确定性箭头 fallback、click geometry 与 D2D cursor layer；GUI cursor/click smoke 与 30 帧 export smoke 通过；真实系统光标素材、高清资源、资源装配共用化未完成 | cursor track + D2D compositor + Tauri/export | 两仓库 cursor renderer | 光标位置/热点/点击波纹、导出复用 |
 | Render | 摄像头布局 | P3 preview 与单源 H.264 export 已接入可选 camera media、startOffset/sourceStartTime/sourceTimeScale 映射、FrameSceneEvaluator camera scene 与 D2D 圆角/边框/阴影/镜像；camera GUI smoke 与 2560×1600/30 帧 export smoke 通过；逐像素基准未完成 | MediaTimeline + camera reader + compositor/export | adrian camera panel | 形状/镜像/阴影/缩放、逐像素对拍 |
 | Render | 背景/圆角/阴影/样机 | D2D background pattern、画布 padding、屏幕 chrome、圆角/边框/阴影已接入 preview scene；跨 preset 像素基准未完成 | compositor | 两仓库 layout panels | 画布尺寸、裁切、颜色、导出复用 |
-| Render | 模糊/spotlight/mosaic | P3a native mosaic blur/spotlight 区域和 intensity 已持久化；GUI 区域编辑与完整预览仍未接入 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜 |
-| Render | 贴图/层级/动画 | P3b GUI 已接入 relative-path、时间、位置、宽度贴图片段持久化；资源导入/预览层级/出入场动画未完成 | compositor + assets | 两仓库 sticker UI | 素材路径安全、层级/出入场 |
+| Render | 模糊/spotlight/mosaic | P3 native D2D 已消费 evaluator 的 blur/spotlight 区域、强度与转场；spotlight GUI smoke 通过；mosaic 编辑 UI 与逐像素基准仍未完成 | compositor + Tauri | adrian Effects UI | 局部范围、过渡、随运镜、像素对拍 |
+| Render | 贴图/层级/动画 | P3 preview/export 已接入安全相对路径 WIC PNG→D3D11 texture、sticker layer、透明度/圆角/阴影/动画求值；GUI sticker smoke 通过；素材导入 UI、更多格式与逐像素基准未完成 | compositor + WIC assets + Tauri/export | 两仓库 sticker UI | 素材路径安全、层级/出入场、导出复用 |
 | Render | 屏幕 3D/开场 | core 部分，GUI/预览未接 | D2D + inspector | adrian screen3d | 透视矩阵、动画边界 |
 | Export | SourceReader 时间线合成 | P4 prototype 部分已验收：SourceReader→FrameSceneEvaluator→D2D/WARP→MediaWriter，单源视频逐帧输出；尚无分段/变速/音频映射 | export pipeline | xiaoying export.js；adrian VideoExporter | 分段/变速/音频映射 |
 | Export | MP4/M4A 最终导出 | P4 prototype GUI 已验收 H.264 MP4；当前无 M4A/音频、取消和失败恢复 | MF/FFmpeg dynamic | 两仓库 export cancel | MP4/M4A 可重开、取消无半成品 |
