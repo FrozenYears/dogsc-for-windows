@@ -500,6 +500,20 @@ RecorderProject apply_edit(const RecorderProject& project, std::wstring_view ope
         clip.position = {parse_double(arguments[3], "x"), parse_double(arguments[4], "y")};
         clip.width = parse_double(arguments[5], "width");
         result = ProjectTimelineEditing::inserting_sticker(project, clip);
+    } else if (operation == L"screen-motion") {
+        if (count != 9) throw std::invalid_argument("screen-motion 需要 start、duration、x、y、scale、rotation-x、rotation-y、rotation-z、perspective");
+        ScreenMotionClip clip;
+        clip.id = new_uuid(project);
+        clip.timing.start_time = parse_double(arguments[0], "start");
+        clip.timing.duration = std::max(parse_double(arguments[1], "duration"), 0.01);
+        clip.timing.lead_in_duration = std::min(0.7, clip.timing.duration);
+        clip.target.position = {parse_double(arguments[2], "x"), parse_double(arguments[3], "y")};
+        clip.target.scale = std::clamp(parse_double(arguments[4], "scale"), 0.2, 4.0);
+        clip.target.rotation_x = std::clamp(parse_double(arguments[5], "rotation-x"), -89.0, 89.0);
+        clip.target.rotation_y = std::clamp(parse_double(arguments[6], "rotation-y"), -89.0, 89.0);
+        clip.target.rotation_z = std::clamp(parse_double(arguments[7], "rotation-z"), -180.0, 180.0);
+        clip.target.perspective = std::clamp(parse_double(arguments[8], "perspective"), 0.0, 1.0);
+        result = ProjectTimelineEditing::inserting_screen_motion(project, clip);
     } else {
         const bool remove = operation == L"remove";
         if ((remove && count != 1) || (!remove && count < 2)) {

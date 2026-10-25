@@ -52,7 +52,7 @@ type ProjectLibraryItem = {
 
 type CaptureTargets = { monitors: Array<{ index: number; device: string; width: number; height: number; primary: boolean }>; windows: Array<{ hwnd: number; title: string; minimized: boolean }> };
 type ProjectLibrary = { root: string; projects: ProjectLibraryItem[] };
-type PreviewFrame = { time: number; width: number; height: number; mime?: string; data?: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean; presentation?: "dxgi" | "image"; presented?: boolean; composed?: boolean; camera?: boolean; cursor?: boolean; click?: boolean; spotlight?: boolean; stickers?: boolean; screenFrame?: boolean; opening?: boolean; compositionError?: string; presentedFrames?: number; droppedFrames?: number; frameStatistics?: { presentCount: number; presentRefreshCount: number; syncRefreshCount: number; syncQpcTime: number } };
+type PreviewFrame = { time: number; width: number; height: number; mime?: string; data?: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean; presentation?: "dxgi" | "image"; presented?: boolean; composed?: boolean; camera?: boolean; cursor?: boolean; click?: boolean; spotlight?: boolean; stickers?: boolean; screenFrame?: boolean; opening?: boolean; screenMotion?: boolean; compositionError?: string; presentedFrames?: number; droppedFrames?: number; frameStatistics?: { presentCount: number; presentRefreshCount: number; syncRefreshCount: number; syncQpcTime: number } };
 type PreviewImageFrame = PreviewFrame & { mime: string; data: string };
 
 let projectSnapshot: ProjectSnapshot | null = null;
@@ -149,6 +149,7 @@ app.innerHTML = `
           <div class="camera-row"><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div>
           <div class="motion-row"><label class="field"><span>屏幕样机</span><select id="style-screen-frame"><option value="none">无</option><option value="windowDark">深色窗口</option><option value="browserDark">深色浏览器</option><option value="browserLight">浅色浏览器</option><option value="devicePhonePortrait">手机竖屏</option><option value="deviceTabletLandscape">平板横屏</option></select></label><label class="field"><span>屏幕运镜</span><select id="style-screen-motion"><option value="聚焦">聚焦</option><option value="平滑">平滑</option></select></label><label class="field"><span>光标运动</span><select id="style-cursor-motion"><option value="平滑">平滑</option><option value="适中">适中</option><option value="快速">快速</option><option value="无">无</option></select></label></div>
           <div class="opening-row"><label class="camera-hidden-toggle"><input id="style-opening-enabled" type="checkbox" /><span>开场动画</span></label><label class="field"><span>开场样式</span><select id="style-opening-preset"><option value="轻 3D">轻 3D</option><option value="聚拢">聚拢</option><option value="侧滑">侧滑</option></select></label><label class="field"><span>开场时长</span><input id="style-opening-duration" type="number" min="0.18" max="10" step="0.1" value="2.2" /></label></div>
+          <div class="screen-motion-row"><label class="field"><span>运镜开始</span><input id="screen-motion-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="screen-motion-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/Scale/RX/RY/RZ/P</span><input id="screen-motion-geometry" type="text" value="0.5,0.5,1.2,0,0,0,0.65" /></label><button id="screen-motion-apply" class="secondary" type="button" disabled>添加运镜</button></div>
           <div class="mosaic-row"><label class="field"><span>遮罩开始</span><input id="mosaic-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="mosaic-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>样式</span><select id="mosaic-style"><option value="blur">模糊</option><option value="spotlight">聚光</option></select></label><label class="field"><span>强度</span><input id="mosaic-intensity" type="number" min="0" max="1" step="0.05" value="0.55" /></label><label class="field"><span>X/Y/W/H</span><input id="mosaic-rect" type="text" value="0.35,0.39,0.30,0.22" /></label><button id="mosaic-apply" class="secondary" type="button" disabled>添加遮罩</button></div>
           <div class="sticker-row"><label class="field"><span>贴图相对路径</span><input id="sticker-path" type="text" spellcheck="false" placeholder="assets/logo.png" /></label><label class="field"><span>开始</span><input id="sticker-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="sticker-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/W</span><input id="sticker-geometry" type="text" value="0.5,0.5,0.38" /></label><button id="sticker-apply" class="secondary" type="button" disabled>添加贴图</button></div>
           <div class="project-preview"><img id="project-preview-image" alt="工程预览帧" /><div class="project-preview-actions"><button id="project-preview-frame" class="secondary" type="button" disabled>预览当前帧</button><button id="project-preview-play" class="secondary" type="button" disabled>播放</button><span id="project-preview-status">未加载预览</span></div></div>
@@ -232,6 +233,10 @@ const styleCursorMotion = $("style-cursor-motion") as HTMLSelectElement;
 const styleOpeningEnabled = $("style-opening-enabled") as HTMLInputElement;
 const styleOpeningPreset = $("style-opening-preset") as HTMLSelectElement;
 const styleOpeningDuration = $("style-opening-duration") as HTMLInputElement;
+const screenMotionStart = $("screen-motion-start") as HTMLInputElement;
+const screenMotionDuration = $("screen-motion-duration") as HTMLInputElement;
+const screenMotionGeometry = $("screen-motion-geometry") as HTMLInputElement;
+const screenMotionApply = $("screen-motion-apply") as HTMLButtonElement;
 const mosaicStart = $("mosaic-start") as HTMLInputElement;
 const mosaicDuration = $("mosaic-duration") as HTMLInputElement;
 const mosaicStyle = $("mosaic-style") as HTMLSelectElement;
@@ -443,7 +448,7 @@ function previewFrameRate() {
 function updatePreviewStatus(frame = latestPreviewFrame) {
   if (!frame) return;
   const surface = frame.presentation === "dxgi" ? "DXGI swapchain" : frame.decodeSurface === "DXGI" ? "DXGI readback" : frame.dxgiManager ? "DXGI manager/CPU readback" : "CPU fallback";
-  const layers = [frame.composed ? "D2D scene" : "screen frame", frame.camera ? "camera" : "", frame.cursor ? "cursor" : "", frame.click ? "click" : "", frame.spotlight ? "spotlight" : "", frame.stickers ? "stickers" : "", frame.screenFrame ? "screen-frame" : "", frame.opening ? "opening" : ""].filter(Boolean).join("+");
+  const layers = [frame.composed ? "D2D scene" : "screen frame", frame.camera ? "camera" : "", frame.cursor ? "cursor" : "", frame.click ? "click" : "", frame.spotlight ? "spotlight" : "", frame.stickers ? "stickers" : "", frame.screenFrame ? "screen-frame" : "", frame.opening ? "opening" : "", frame.screenMotion ? "screen-motion" : ""].filter(Boolean).join("+");
   const refresh = frame.frameStatistics ? ` · vblank ${frame.frameStatistics.syncRefreshCount}` : "";
   projectPreviewStatus.textContent = `${frame.width}×${frame.height} @ ${frame.time.toFixed(2)}s · ${previewFrameRate().toFixed(0)} fps · ${layers} · ${surface}${refresh} · 帧 ${previewFramesPresented}/${previewFramesReceived} · 丢帧 ${previewFramesDropped} · 背压 ${previewBackpressureSkips}${frame.compositionError ? ` · 合成回退:${frame.compositionError}` : ""}`;
 }
@@ -822,6 +827,7 @@ function updateEditorButtons() {
   projectPreviewPlay.disabled = !hasProject;
   projectExport.disabled = !hasProject || projectCommandBusy || !projectExportPath.value.trim();
   styleApply.disabled = !hasProject || projectCommandBusy;
+  screenMotionApply.disabled = !hasProject || projectCommandBusy;
   mosaicApply.disabled = !hasProject || projectCommandBusy;
   stickerApply.disabled = !hasProject || projectCommandBusy;
   const dirty = snapshot?.session?.dirty ?? false;
@@ -1034,6 +1040,17 @@ async function renameProject() {
   }
 }
 
+async function applyScreenMotion() {
+  if (!projectFile) return;
+  const values = screenMotionGeometry.value.split(",").map((value) => Number(value.trim()));
+  if (values.length !== 7 || values.some((value) => !Number.isFinite(value))) {
+    projectLog("运镜几何必须是 x,y,scale,rotation-x,rotation-y,rotation-z,perspective", false);
+    return;
+  }
+  await applyProjectEdit("screen-motion", screenMotionStart.value, screenMotionDuration.value,
+    ...values.map((value) => String(value)));
+}
+
 async function applyMosaic() {
   if (!projectFile) return;
   const values = mosaicRect.value.split(",").map((value) => Number(value.trim()));
@@ -1127,6 +1144,7 @@ projectExportPath.addEventListener("input", updateEditorButtons);
 projectExport.addEventListener("click", () => { void exportProject(); });
 styleApply.addEventListener("click", () => { void applyProjectStyles(); });
 mosaicApply.addEventListener("click", () => { void applyMosaic(); });
+screenMotionApply.addEventListener("click", () => { void applyScreenMotion(); });
 stickerApply.addEventListener("click", () => { void applySticker(); });
 let closeConfirmationInProgress = false;
 void getCurrentWindow().onCloseRequested(async (event) => {

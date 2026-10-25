@@ -201,7 +201,9 @@ try {
   await openProject(projectA, titleA);
   if (process.env.DOGSC_EXERCISE_SCENE_CONTROLS === "1") {
     await evaluateValue('(()=>{document.querySelector("#style-screen-frame").value="browserDark";document.querySelector("#style-screen-motion").value="平滑";document.querySelector("#style-cursor-motion").value="适中";document.querySelector("#style-opening-enabled").checked=true;document.querySelector("#style-opening-preset").value="侧滑";document.querySelector("#style-opening-duration").value="1.2";document.querySelector("#style-apply").click();return true})()');
-    await waitFor("scene controls 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
+    await waitFor("scene styles 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
+    await evaluateValue('(()=>{document.querySelector("#screen-motion-geometry").value="0.5,0.5,1.2,6,-4,0,0.65";document.querySelector("#screen-motion-apply").click();return true})()');
+    await waitFor("screen motion clip 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
   }
   await revealPreview();
   await evaluateValue('document.querySelector("#edit-time").value="0";document.querySelector("#project-preview-play").click(); true');
@@ -215,7 +217,8 @@ try {
       (process.env.DOGSC_REQUIRE_STICKERS !== "1" || status.includes("stickers")) &&
       (process.env.DOGSC_REQUIRE_SPOTLIGHT !== "1" || status.includes("spotlight")) &&
       (process.env.DOGSC_REQUIRE_SCREEN_FRAME !== "1" || status.includes("screen-frame")) &&
-      (process.env.DOGSC_REQUIRE_OPENING !== "1" || status.includes("opening"));
+      (process.env.DOGSC_REQUIRE_OPENING !== "1" || status.includes("opening")) &&
+      (process.env.DOGSC_REQUIRE_SCREEN_MOTION !== "1" || status.includes("screen-motion"));
     if (ready) previewStatusA = status;
     return ready;
   });
@@ -245,6 +248,9 @@ try {
   }
   if (process.env.DOGSC_REQUIRE_OPENING === "1" && !previewStatusA.includes("opening")) {
     throw new Error(`工程 A 未产生 opening scene 层: ${previewStatusA}`);
+  }
+  if (process.env.DOGSC_REQUIRE_SCREEN_MOTION === "1" && !previewStatusA.includes("screen-motion")) {
+    throw new Error(`工程 A 未产生 screen motion scene 层: ${previewStatusA}`);
   }
   if (process.env.DOGSC_EXERCISE_WINDOW === "1") {
     const beforeWindow = windowCommand("get");

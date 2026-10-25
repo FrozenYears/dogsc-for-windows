@@ -766,6 +766,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             bool scene_has_stickers = false;
             bool scene_has_spotlight = false;
             bool scene_has_screen_frame = false;
+            bool scene_has_screen_motion = false;
             bool scene_has_opening = false;
             std::string composition_error;
             if (compositor) {
@@ -817,6 +818,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                     scene_has_stickers = !plan.scene.stickers.empty();
                     scene_has_screen_frame = plan.scene.screen.decoration.has_value();
                     scene_has_opening = project.opening_sequence.is_enabled && seconds < project.opening_sequence.duration;
+                    scene_has_screen_motion = !project.screen_motion_clips.empty();
                     composed = true;
                 } catch (const std::exception& error) {
                     std::cerr << "D2D preview composition failed; using source frame: " << error.what() << '\n';
@@ -844,7 +846,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
                 {"composed", composed}, {"camera", scene_has_camera}, {"cursor", scene_has_cursor}, {"click", scene_has_click},
                 {"spotlight", scene_has_spotlight}, {"stickers", scene_has_stickers},
-                {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening},
+                {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening}, {"screenMotion", scene_has_screen_motion},
                 {"compositionError", composition_error.empty() ? initialization_error : composition_error},
                 {"presentedFrames", overlay->presented_frames()}, {"droppedFrames", overlay->dropped_frames()}};
             if (const auto statistics = overlay->frame_statistics()) {
