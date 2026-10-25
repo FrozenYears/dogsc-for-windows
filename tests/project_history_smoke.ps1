@@ -37,17 +37,39 @@ try {
 
     $listed = Invoke-Project "list" @("project", "list", $library)
     if (@($listed.projects).Count -ne 2) { throw "project list did not return two projects" }
+    $cleanBegin = Invoke-Project "clean-begin" @("project", "begin", $second)
+    if ($cleanBegin.session.dirty -or $cleanBegin.session.hasRecovery) { throw "fresh begin reported a dirty/recovery state" }
+    if (Test-Path (Join-Path $second ".project-recovery.json")) { throw "fresh begin wrote a recovery manifest" }
+    $cleanRestart = Invoke-Project "clean-restart" @("project", "begin", $second)
+    if ($cleanRestart.session.dirty -or $cleanRestart.session.hasRecovery) { throw "clean reopen reported false recovery" }
+    $secondDraft = Invoke-Project "second-draft" @("project", "edit-draft", $second, "split", "5")
+    if (-not $secondDraft.session.dirty -or -not $secondDraft.session.hasRecovery) { throw "edited draft was not marked dirty" }
+    $secondSave = Invoke-Project "second-save" @("project", "save", $second)
+    if ($secondSave.session.dirty -or $secondSave.session.hasRecovery) { throw "saved draft remained dirty" }
+    $secondInspect = Invoke-Project "second-inspect" @("project", "inspect", $second)
+    if ($secondInspect.session.dirty -or $secondInspect.session.hasRecovery) { throw "inspect reported a stale recovery after save" }
+    $noOpDraft = Invoke-Project "no-op-draft" @("project", "edit-draft", $second, "style", "background", "黑曜石网格")
+    if ($noOpDraft.session.dirty -or $noOpDraft.session.hasRecovery) { throw "no-op edit marked a clean draft dirty" }
+    if (Test-Path (Join-Path $second ".project-recovery.json")) { throw "no-op edit left a recovery manifest" }
+    $nextDraft = Invoke-Project "edit-after-save" @("project", "edit-draft", $second, "style", "background", "工程白网格")
+    if (-not $nextDraft.session.dirty -or -not $nextDraft.session.hasRecovery) { throw "editing after save did not create a new dirty draft" }
+    $null = Invoke-Project "discard-after-save" @("project", "discard", $second)
+    $afterDiscardDraft = Invoke-Project "edit-after-discard" @("project", "edit-draft", $second, "style", "background", "暗夜星阵")
+    if (-not $afterDiscardDraft.session.dirty) { throw "editing after discard did not create a fresh draft" }
 
     $projectPath = $first
     $null = Invoke-Project "inspect" @("project", "inspect", $projectPath)
     $begin = Invoke-Project "begin" @("project", "begin", $projectPath)
-    if ($begin.session.dirty) { throw "fresh begin should not be dirty" }
+    if ($begin.session.dirty -or $begin.session.hasRecovery) { throw "fresh begin should have clean state" }
+    if (Test-Path (Join-Path $projectPath ".project-recovery.json")) { throw "fresh begin wrote a recovery manifest" }
+    $cleanReopen = Invoke-Project "clean-reopen" @("project", "begin", $projectPath)
+    if ($cleanReopen.session.dirty -or $cleanReopen.session.hasRecovery) { throw "reopening unchanged project reported false recovery" }
     $draft = Invoke-Project "edit-draft" @("project", "edit-draft", $projectPath, "split", "5")
     if (-not $draft.session.dirty -or -not (Test-Path (Join-Path $projectPath ".project-recovery.json"))) {
         throw "draft recovery manifest was not created"
     }
     $restart = Invoke-Project "begin-recovery" @("project", "begin", $projectPath)
-    if (-not $restart.session.hasRecovery) { throw "begin did not report recovery" }
+    if (-not $restart.session.dirty -or -not $restart.session.hasRecovery) { throw "begin did not report dirty recovery" }
     $discard = Invoke-Project "discard" @("project", "discard", $projectPath)
     if ((Test-Path (Join-Path $projectPath ".project-draft.json")) -or
         (Test-Path (Join-Path $projectPath ".project-recovery.json"))) { throw "discard left recovery files" }

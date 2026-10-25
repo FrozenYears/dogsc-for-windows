@@ -282,15 +282,28 @@ void change_revision(const std::filesystem::path& path, bool redo) {
     save_history(path, history);
 }
 
+bool draft_is_modified(const std::filesystem::path& path) {
+    const auto draft = draft_path(path);
+    if (!std::filesystem::exists(draft)) return false;
+    try {
+        const auto committed = nlohmann::json::parse(read_text(path));
+        const auto pending = nlohmann::json::parse(read_text(draft));
+        return committed != pending;
+    } catch (...) {
+        return true;
+    }
+}
+
 void attach_history(json& result, const std::filesystem::path& path) {
     const auto history = read_history(path);
     result["history"] = {
         {"canUndo", !history.states.empty() && history.current > 0},
         {"canRedo", !history.states.empty() && history.current + 1 < history.states.size()},
     };
+    const bool dirty = draft_is_modified(path);
     result["session"] = {
-        {"dirty", std::filesystem::exists(draft_path(path))},
-        {"hasRecovery", std::filesystem::exists(recovery_path(path))},
+        {"dirty", dirty},
+        {"hasRecovery", dirty},
     };
 }
 
@@ -346,7 +359,6 @@ json rename_project(const std::filesystem::path& project_path, std::wstring_view
 void ensure_draft(const std::filesystem::path& path) {
     const auto draft = draft_path(path);
     if (!std::filesystem::exists(draft)) copy_file_atomically(path, draft);
-    write_recovery_manifest(path);
 }
 
 RecorderProject read_draft(const std::filesystem::path& path) {
@@ -357,7 +369,12 @@ RecorderProject read_draft(const std::filesystem::path& path) {
 
 void write_draft(const std::filesystem::path& path, const RecorderProject& project) {
     write_text_atomically(draft_path(path), ProjectJson::encode(project), L".dogsc-draft.tmp");
-    write_recovery_manifest(path);
+    if (draft_is_modified(path)) {
+        write_recovery_manifest(path);
+    } else {
+        std::error_code error;
+        std::filesystem::remove(recovery_path(path), error);
+    }
 }
 RecorderProject apply_style(const RecorderProject& project, std::wstring_view style,
                             int count, wchar_t** arguments) {
@@ -503,27 +520,30 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
     const auto normalized_path = normalize_project_path(project_path);
     if (action == L"begin") {
         if (argument_count != 0) throw std::invalid_argument("begin 不接受额外参数");
-        const bool had_recovery = std::filesystem::exists(draft_path(normalized_path)) ||
-            std::filesystem::exists(recovery_path(normalized_path));
+        const bool had_recovery = draft_is_modified(normalized_path);
+        if (!had_recovery) {
+            std::error_code error;
+            std::filesystem::remove(recovery_path(normalized_path), error);
+        }
         ensure_draft(normalized_path);
         const auto draft = read_draft(normalized_path);
         const auto duration = full_source_duration(draft);
         auto output = snapshot(draft, duration);
         attach_history(output, normalized_path);
-        output["session"]["dirty"] = false;
+        output["session"]["dirty"] = had_recovery;
         output["session"]["hasRecovery"] = had_recovery;
         std::cout << output.dump(2) << '\n';
         return 0;
     }
     if (action == L"edit-draft") {
         if (argument_count < 1) throw std::invalid_argument("edit-draft 缺少操作");
+        ensure_draft(normalized_path);
         const auto draft = read_draft(normalized_path);
         const auto duration = full_source_duration(draft);
         const auto edited = apply_project_operation(draft, arguments[0], argument_count - 1, arguments + 1);
         write_draft(normalized_path, edited);
         auto output = snapshot(edited, duration);
         attach_history(output, normalized_path);
-        output["session"]["dirty"] = true;
         std::cout << output.dump(2) << '\n';
         return 0;
     }
