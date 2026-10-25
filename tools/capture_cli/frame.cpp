@@ -463,6 +463,27 @@ private:
     std::int64_t first_timestamp_ = 0;
     bool has_timestamp_ = false;
 };
+void write_audio_track(capture::MediaWriter& writer, const AudioReader& audio,
+                       const TimelineMediaPlan& plan, double source_start, std::size_t track) {
+    constexpr double kAudioScaleEpsilon = 1e-9;
+    for (const auto& slice : plan.slices()) {
+        if (std::abs(slice.source_time_scale - 1.0) > kAudioScaleEpsilon) {
+            throw std::runtime_error("音频映射暂不支持非 1x 播放速度");
+        }
+        const auto source_frame = static_cast<std::int64_t>(std::llround(
+            (slice.source_start - source_start -
+             static_cast<double>(audio.first_timestamp()) / 10000000.0) * AudioReader::kSampleRate));
+        const auto output_frames = static_cast<std::uint32_t>(std::llround(
+            slice.duration * AudioReader::kSampleRate));
+        if (source_frame < 0 || static_cast<std::uint64_t>(source_frame) + output_frames > audio.frames()) {
+            throw std::runtime_error("音频时间线超出可读取样本范围");
+        }
+        const auto* bytes = audio.bytes().data() +
+            static_cast<std::size_t>(source_frame) * AudioReader::kBlockAlignment;
+        writer.write_audio(track, bytes, output_frames,
+            static_cast<std::int64_t>(slice.output_start * 10000000));
+    }
+}
 
 json frame_json(FrameReader& reader, double seconds, std::uint32_t max_width, bool sequential = false) {
     if (!std::isfinite(seconds) || seconds < 0) throw std::invalid_argument("预览时间必须是非负有限数字");
@@ -701,32 +722,12 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
     capture::MediaWriter writer(device.get(), options);
     const auto frame_count = static_cast<std::int64_t>(std::ceil(duration * frame_rate));
     const auto frame_duration = static_cast<std::int64_t>(10000000 / frame_rate);
-    const auto write_audio = [&](const AudioReader& audio, const TimelineMediaPlan& plan,
-                                 double source_start, std::size_t track) {
-        constexpr double kAudioScaleEpsilon = 1e-9;
-        for (const auto& slice : plan.slices()) {
-            if (std::abs(slice.source_time_scale - 1.0) > kAudioScaleEpsilon) {
-                throw std::runtime_error("音频映射暂不支持非 1x 播放速度");
-            }
-            const auto source_frame = static_cast<std::int64_t>(std::llround(
-                (slice.source_start - source_start -
-                 static_cast<double>(audio.first_timestamp()) / 10000000.0) * AudioReader::kSampleRate));
-            const auto output_frames = static_cast<std::uint32_t>(std::llround(
-                slice.duration * AudioReader::kSampleRate));
-            if (source_frame < 0 || static_cast<std::uint64_t>(source_frame) + output_frames > audio.frames()) {
-                throw std::runtime_error("音频时间线超出可读取样本范围");
-            }
-            const auto* bytes = audio.bytes().data() +
-                static_cast<std::size_t>(source_frame) * AudioReader::kBlockAlignment;
-            writer.write_audio(track, bytes, output_frames,
-                static_cast<std::int64_t>(slice.output_start * 10000000));
-        }
-    };
     if (system_audio_reader) {
-        write_audio(*system_audio_reader, media_plan, project.media->screen.source_start_time, 0);
+        write_audio_track(writer, *system_audio_reader, media_plan,
+            project.media->screen.source_start_time, 0);
     }
     if (microphone_audio_reader && microphone_audio_plan) {
-        write_audio(*microphone_audio_reader, *microphone_audio_plan,
+        write_audio_track(writer, *microphone_audio_reader, *microphone_audio_plan,
             project.media->microphone->source_start_time, system_audio_reader ? 1 : 0);
     }
     for (std::int64_t index = 0; index < frame_count; ++index) {
@@ -774,6 +775,27 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
     return json{{"output", output.string()}, {"frameRate", frame_rate},
                 {"frameCount", frame_count}, {"duration", duration},
                 {"encoder", writer.video_encoder_name()}};
+}
+json export_audio_json(const std::filesystem::path& project_path, const std::filesystem::path& output) {
+    const auto project = load_project(project_path);
+    if (!project.media || !project.media->screen.source_end_time) throw std::runtime_error("工程缺少屏幕媒体时长");
+    const auto source_duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
+    TimelineMap timeline;
+    if (const auto error = TimelineMap::create(project.source_sequence, source_duration, timeline)) {
+        throw std::runtime_error(std::string("时间线解析失败: ") + error->message());
+    }
+    const auto plan = TimelineMediaPlan::from_primary(timeline);
+    if (!project.capture.records_system_audio) throw std::runtime_error("工程未启用系统音频");
+    AudioReader audio(media_path(project_path));
+    capture::WriterOptions options;
+    options.path = output.wstring();
+    options.audio_formats.push_back({AudioReader::kSampleRate, AudioReader::kChannels,
+        AudioReader::kBitsPerSample, true, 3});
+    capture::MediaWriter writer(nullptr, options);
+    write_audio_track(writer, audio, plan, project.media->screen.source_start_time, 0);
+    writer.finalize();
+    return json{{"output", output.string()}, {"duration", plan.output_duration()},
+                {"sampleRate", AudioReader::kSampleRate}, {"channels", AudioReader::kChannels}};
 }
 }  // namespace
 
@@ -1023,6 +1045,25 @@ int project_export_video_command(const std::filesystem::path& project_path,
                     {"fraction", total > 0 ? static_cast<double>(completed) / total : 1.0}}.dump()
                     << '\n' << std::flush;
             });
+        std::filesystem::remove(output, cleanup_error);
+        std::filesystem::rename(partial, output);
+        result["output"] = output.string();
+        std::cout << result.dump(2) << '\n';
+        return 0;
+    } catch (...) {
+        std::filesystem::remove(partial, cleanup_error);
+        throw;
+    }
+}
+int project_export_audio_command(const std::filesystem::path& project_path,
+                                 const std::filesystem::path& output) {
+    const auto normalized = project_path.extension() == ".json" ? project_path : project_path / "project.json";
+    auto partial = output;
+    partial += ".partial";
+    std::error_code cleanup_error;
+    std::filesystem::remove(partial, cleanup_error);
+    try {
+        auto result = export_audio_json(normalized, partial);
         std::filesystem::remove(output, cleanup_error);
         std::filesystem::rename(partial, output);
         result["output"] = output.string();

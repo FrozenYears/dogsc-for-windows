@@ -33,4 +33,6 @@ int project_composite_frame_command(const std::filesystem::path& project_path, d
                                     std::uint32_t max_width);
 int project_export_video_command(const std::filesystem::path& project_path,
                                  const std::filesystem::path& output, int frame_rate);
+int project_export_audio_command(const std::filesystem::path& project_path,
+                                 const std::filesystem::path& output);
 } // namespace dogsc::cli

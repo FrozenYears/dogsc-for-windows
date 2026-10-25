@@ -36,6 +36,7 @@ void usage() {
         "  dogsc_capture project frame <project.json|project-directory> <seconds> [max-width]\n"
         "  dogsc_capture project composite-frame <project.json|project-directory> <seconds> [max-width]\n"
         "  dogsc_capture project export-video <project.json|project-directory> <output.mp4> <fps>\n"
+        "  dogsc_capture project export-audio <project.json|project-directory> <output.m4a>\n"
         "  dogsc_capture project stream <project.json|project-directory> [max-width]\n"
         "  dogsc_capture project stream-window <project.json|project-directory> <max-width> <owner-hwnd>\n"
         "  dogsc_capture project edit <project.json|project-directory> split <output-time>\n"
@@ -87,6 +88,9 @@ int wmain(int argc, wchar_t** argv) {
             const auto frame_rate = integer(argv[5]);
             if (frame_rate == 0 || frame_rate > 120) throw std::invalid_argument("导出帧率必须在 1..120 之间");
             return dogsc::cli::project_export_video_command(argv[3], argv[4], static_cast<int>(frame_rate));
+        }
+        if (command == L"project" && argc == 5 && std::wstring_view(argv[2]) == L"export-audio") {
+            return dogsc::cli::project_export_audio_command(argv[3], argv[4]);
         }
         if (command == L"project" && argc == 6 && std::wstring_view(argv[2]) == L"stream-window") {
             const auto requested_width = integer(argv[4]);
