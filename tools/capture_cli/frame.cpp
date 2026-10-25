@@ -677,35 +677,56 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
                       << error.what() << '\n';
         }
     }
+    std::unique_ptr<AudioReader> microphone_audio_reader;
+    std::optional<TimelineMediaPlan> microphone_audio_plan;
+    if (project.capture.records_microphone && project.media && project.media->microphone) {
+        microphone_audio_reader = std::make_unique<AudioReader>(
+            media_reference_path(project_path, *project.media->microphone, "麦克风"));
+        const auto& reference = *project.media->microphone;
+        const auto available_duration = reference.source_end_time
+            ? std::max(*reference.source_end_time - reference.source_start_time, 0.0) : duration;
+        const auto placement = MediaTimelinePlacement::make(reference, 0, available_duration, duration);
+        microphone_audio_plan = TimelineMediaPlan::from_auxiliary(timeline, placement, reference.sync_anchors);
+    }
     capture::WriterOptions options;
     options.path = output.wstring(); options.width = reader.width(); options.height = reader.height();
     options.frame_rate = frame_rate; options.codec = capture::VideoCodec::h264; options.fragmented = false;
-    if (system_audio_reader) options.audio_formats.push_back({AudioReader::kSampleRate,
-        AudioReader::kChannels, AudioReader::kBitsPerSample, true, 3});
+    if (system_audio_reader || microphone_audio_reader) {
+        const capture::AudioFormat format{AudioReader::kSampleRate, AudioReader::kChannels,
+            AudioReader::kBitsPerSample, true, 3};
+        if (system_audio_reader) options.audio_formats.push_back(format);
+        if (microphone_audio_reader) options.audio_formats.push_back(format);
+    }
     capture::MediaWriter writer(device.get(), options);
     const auto frame_count = static_cast<std::int64_t>(std::ceil(duration * frame_rate));
     const auto frame_duration = static_cast<std::int64_t>(10000000 / frame_rate);
-    if (system_audio_reader) {
+    const auto write_audio = [&](const AudioReader& audio, const TimelineMediaPlan& plan,
+                                 double source_start, std::size_t track) {
         constexpr double kAudioScaleEpsilon = 1e-9;
-        for (const auto& slice : media_plan.slices()) {
+        for (const auto& slice : plan.slices()) {
             if (std::abs(slice.source_time_scale - 1.0) > kAudioScaleEpsilon) {
                 throw std::runtime_error("音频映射暂不支持非 1x 播放速度");
             }
             const auto source_frame = static_cast<std::int64_t>(std::llround(
-                (slice.source_start - project.media->screen.source_start_time -
-                 static_cast<double>(system_audio_reader->first_timestamp()) / 10000000.0) *
-                AudioReader::kSampleRate));
+                (slice.source_start - source_start -
+                 static_cast<double>(audio.first_timestamp()) / 10000000.0) * AudioReader::kSampleRate));
             const auto output_frames = static_cast<std::uint32_t>(std::llround(
                 slice.duration * AudioReader::kSampleRate));
-            if (source_frame < 0 || static_cast<std::uint64_t>(source_frame) + output_frames >
-                system_audio_reader->frames()) {
+            if (source_frame < 0 || static_cast<std::uint64_t>(source_frame) + output_frames > audio.frames()) {
                 throw std::runtime_error("音频时间线超出可读取样本范围");
             }
-            const auto* bytes = system_audio_reader->bytes().data() +
+            const auto* bytes = audio.bytes().data() +
                 static_cast<std::size_t>(source_frame) * AudioReader::kBlockAlignment;
-            writer.write_audio(0, bytes, output_frames,
+            writer.write_audio(track, bytes, output_frames,
                 static_cast<std::int64_t>(slice.output_start * 10000000));
         }
+    };
+    if (system_audio_reader) {
+        write_audio(*system_audio_reader, media_plan, project.media->screen.source_start_time, 0);
+    }
+    if (microphone_audio_reader && microphone_audio_plan) {
+        write_audio(*microphone_audio_reader, *microphone_audio_plan,
+            project.media->microphone->source_start_time, system_audio_reader ? 1 : 0);
     }
     for (std::int64_t index = 0; index < frame_count; ++index) {
         const auto time = static_cast<double>(index) / frame_rate;
