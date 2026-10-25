@@ -842,6 +842,7 @@ int project_frame_stream_command(const std::filesystem::path& project_path, std:
             auto response = json{{"time", static_cast<double>(reader.last_timestamp()) / 10000000},
                 {"width", width}, {"height", height}, {"decodeSurface", reader.used_dxgi_surface() ? "DXGI" : "system-memory"},
                 {"dxgiManager", reader.has_dxgi_manager()}, {"presentation", "dxgi"}, {"presented", presented},
+                {"composed", composed}, {"camera", scene_has_camera}, {"cursor", scene_has_cursor}, {"click", scene_has_click},
                 {"spotlight", scene_has_spotlight}, {"stickers", scene_has_stickers},
                 {"screenFrame", scene_has_screen_frame}, {"opening", scene_has_opening},
                 {"compositionError", composition_error.empty() ? initialization_error : composition_error},
