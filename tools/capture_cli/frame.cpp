@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -612,7 +613,7 @@ std::unordered_map<std::string, winrt::com_ptr<ID3D11Texture2D>> load_sticker_te
 }
 
 json export_video_json(const std::filesystem::path& project_path, const std::filesystem::path& output,
-                       int frame_rate) {
+                       int frame_rate, const std::function<void(std::int64_t, std::int64_t)>& progress = {}) {
     const auto project = load_project(project_path);
     if (!project.media || !project.media->screen.source_end_time) throw std::runtime_error("工程缺少屏幕媒体时长");
     const auto source_duration = *project.media->screen.source_end_time - project.media->screen.source_start_time;
@@ -765,6 +766,9 @@ json export_video_json(const std::filesystem::path& project_path, const std::fil
         }
         if (!compositor->compose(plan, resources)) throw std::runtime_error(std::string(compositor->last_error()));
         writer.write_video(compositor->output_texture(), index * frame_duration, frame_duration);
+        if (progress && ((index + 1) == frame_count || (index + 1) % std::max<std::int64_t>(1, frame_rate / 2) == 0)) {
+            progress(index + 1, frame_count);
+        }
     }
     writer.finalize();
     return json{{"output", output.string()}, {"frameRate", frame_rate},
@@ -1008,7 +1012,25 @@ int project_composite_frame_command(const std::filesystem::path& project_path, d
 int project_export_video_command(const std::filesystem::path& project_path,
                                  const std::filesystem::path& output, int frame_rate) {
     const auto normalized = project_path.extension() == ".json" ? project_path : project_path / "project.json";
-    std::cout << export_video_json(normalized, output, frame_rate).dump(2) << '\n';
-    return 0;
+    auto partial = output;
+    partial += ".partial";
+    std::error_code cleanup_error;
+    std::filesystem::remove(partial, cleanup_error);
+    try {
+        auto result = export_video_json(normalized, partial, frame_rate,
+            [](std::int64_t completed, std::int64_t total) {
+                std::cout << json{{"type", "progress"}, {"completed", completed}, {"total", total},
+                    {"fraction", total > 0 ? static_cast<double>(completed) / total : 1.0}}.dump()
+                    << '\n' << std::flush;
+            });
+        std::filesystem::remove(output, cleanup_error);
+        std::filesystem::rename(partial, output);
+        result["output"] = output.string();
+        std::cout << result.dump(2) << '\n';
+        return 0;
+    } catch (...) {
+        std::filesystem::remove(partial, cleanup_error);
+        throw;
+    }
 }
 }  // namespace dogsc::cli

@@ -53,6 +53,7 @@ type ProjectLibraryItem = {
 type CaptureTargets = { monitors: Array<{ index: number; device: string; width: number; height: number; primary: boolean }>; windows: Array<{ hwnd: number; title: string; minimized: boolean }> };
 type ProjectLibrary = { root: string; projects: ProjectLibraryItem[] };
 type PreviewFrame = { time: number; width: number; height: number; mime?: string; data?: string; decodeSurface?: "DXGI" | "system-memory"; dxgiManager?: boolean; presentation?: "dxgi" | "image"; presented?: boolean; composed?: boolean; camera?: boolean; cursor?: boolean; click?: boolean; spotlight?: boolean; stickers?: boolean; screenFrame?: boolean; opening?: boolean; screenMotion?: boolean; compositionError?: string; presentedFrames?: number; droppedFrames?: number; frameStatistics?: { presentCount: number; presentRefreshCount: number; syncRefreshCount: number; syncQpcTime: number } };
+let exportChild: CaptureChild | null = null;
 type PreviewImageFrame = PreviewFrame & { mime: string; data: string };
 
 let projectSnapshot: ProjectSnapshot | null = null;
@@ -143,7 +144,7 @@ app.innerHTML = `
           <div class="project-rename-row"><label class="field"><span>工程名称</span><input id="project-rename-name" type="text" spellcheck="false" placeholder="新工程目录名" /></label><button id="project-rename" class="secondary" type="button" disabled>重命名</button></div>
           <div class="project-summary"><div><strong id="project-title">未打开工程</strong><span>工程</span></div><div><strong id="project-duration">—</strong><span>输出时长</span></div><div><strong id="project-segment-count">—</strong><span>片段</span></div><div><strong id="project-save-state">未打开</strong><span>保存状态</span></div><div class="project-history-actions"><button id="project-save" class="secondary" type="button" disabled>保存</button><button id="project-discard" class="secondary danger" type="button" disabled>放弃草稿</button><button id="project-undo" class="secondary" type="button" disabled>撤销</button><button id="project-redo" class="secondary" type="button" disabled>重做</button></div></div>
           <div id="timeline" class="timeline"><span class="timeline-empty">打开录制目录中的 project.json 后开始编辑</span></div>
-          <div class="project-export-row"><label class="field"><span>导出 MP4</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary" type="button" disabled>导出</button></div>
+          <div class="project-export-row"><label class="field"><span>导出 MP4</span><input id="project-export-path" type="text" spellcheck="false" /></label><button id="project-export" class="secondary" type="button" disabled>导出</button><button id="project-export-cancel" class="secondary danger" type="button" disabled>取消导出</button></div>
           <div class="style-row"><label class="field"><span>背景</span><select id="style-background"><option>黑曜石网格</option><option>工程白网格</option><option>暗夜星阵</option><option>建筑极简点</option><option>立体等角网</option></select></label><label class="field"><span>留白</span><input id="style-padding" type="number" min="0" max="1000" step="1" value="100" /></label><label class="field"><span>摄像头尺寸</span><input id="style-camera-size" type="number" min="0.05" max="1" step="0.01" value="0.29" /></label><label class="field"><span>光标尺寸</span><input id="style-cursor-size" type="number" min="0.25" max="6" step="0.05" value="1.25" /></label><button id="style-apply" class="secondary" type="button" disabled>应用画面参数</button></div>
           <div class="effect-row"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>点击透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>点击缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label></div>
           <div class="camera-row"><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div>
@@ -217,6 +218,7 @@ const projectSaveState = $("project-save-state");
 const projectSave = $("project-save") as HTMLButtonElement;
 const projectDiscard = $("project-discard") as HTMLButtonElement;
 const projectExportPath = $("project-export-path") as HTMLInputElement;
+const projectExportCancel = $("project-export-cancel") as HTMLButtonElement;
 const projectExport = $("project-export") as HTMLButtonElement;
 const styleBackground = $("style-background") as HTMLSelectElement;
 const stylePadding = $("style-padding") as HTMLInputElement;
@@ -404,7 +406,7 @@ async function runProjectCompositeFrame(path: string, seconds: number): Promise<
 
 async function runProjectExport(path: string, output: string): Promise<{ output: string; frameCount: number; duration: number }> {
   const command = Command.sidecar("binaries/dogsc_capture", ["project", "export-video", path, output, "30"]);
-  let text = "";
+  let finalText = "";
   let errors = "";
   return await new Promise((resolve, reject) => {
     let settled = false;
@@ -413,16 +415,30 @@ async function runProjectExport(path: string, output: string): Promise<{ output:
       settled = true;
       reject(error instanceof Error ? error : new Error(String(error)));
     };
-    command.stdout.on("data", (line) => { text += String(line); });
+    command.stdout.on("data", (line) => {
+      const text = String(line).trim();
+      if (!text) return;
+      try {
+        const payload = JSON.parse(text) as { type?: string; completed?: number; total?: number };
+        if (payload.type === "progress") {
+          const percent = payload.total ? Math.round((payload.completed ?? 0) * 100 / payload.total) : 0;
+          projectLog(`导出进度 ${percent}%`, true);
+          return;
+        }
+      } catch { /* 最终 JSON 在 close 时统一解析 */ }
+      finalText += `${text}\n`;
+    });
     command.stderr.on("data", (line) => { errors += String(line); });
     command.on("error", fail);
     command.on("close", (event) => {
+      exportChild = null;
+      updateEditorButtons();
       if (settled) return;
       if (event.code !== 0) { fail(new Error(errors.trim() || `导出命令退出（exit ${event.code ?? "unknown"}）`)); return; }
-      try { settled = true; resolve(JSON.parse(text) as { output: string; frameCount: number; duration: number }); }
+      try { settled = true; resolve(JSON.parse(finalText) as { output: string; frameCount: number; duration: number }); }
       catch (error) { fail(new Error(`导出命令返回了无效 JSON：${String(error)}`)); }
     });
-    void command.spawn().catch(fail);
+    void command.spawn().then((child) => { exportChild = child; updateEditorButtons(); }).catch(fail);
   });
 }
 
@@ -826,6 +842,7 @@ function updateEditorButtons() {
   projectPreviewFrame.disabled = !hasProject;
   projectPreviewPlay.disabled = !hasProject;
   projectExport.disabled = !hasProject || projectCommandBusy || !projectExportPath.value.trim();
+  projectExportCancel.disabled = exportChild === null;
   styleApply.disabled = !hasProject || projectCommandBusy;
   screenMotionApply.disabled = !hasProject || projectCommandBusy;
   mosaicApply.disabled = !hasProject || projectCommandBusy;
@@ -1089,11 +1106,20 @@ async function applyProjectStyles() {
     updateEditorButtons();
   }
 }
+async function cancelProjectExport() {
+  if (!exportChild) return;
+  projectLog("正在取消导出……", true);
+  try { await exportChild.kill(); } catch (error) { projectLog(`取消导出失败：${String(error)}`, false); }
+  exportChild = null;
+  projectCommandBusy = false;
+  updateEditorButtons();
+}
 
 async function exportProject() {
   if (!projectFile || !projectExportPath.value.trim() || !(await flushProjectSave())) return;
   projectCommandBusy = true;
   projectExport.disabled = true;
+  projectExportCancel.disabled = false;
   try {
     const result = await runProjectExport(projectFile, projectExportPath.value.trim());
     projectLog(`导出完成：${result.frameCount} 帧，${result.duration.toFixed(2)}s`, false);
@@ -1142,6 +1168,7 @@ projectSave.addEventListener("click", () => { void flushProjectSave(); });
 projectDiscard.addEventListener("click", () => { void discardProjectDraft(); });
 projectExportPath.addEventListener("input", updateEditorButtons);
 projectExport.addEventListener("click", () => { void exportProject(); });
+projectExportCancel.addEventListener("click", () => { void cancelProjectExport(); });
 styleApply.addEventListener("click", () => { void applyProjectStyles(); });
 mosaicApply.addEventListener("click", () => { void applyMosaic(); });
 screenMotionApply.addEventListener("click", () => { void applyScreenMotion(); });
