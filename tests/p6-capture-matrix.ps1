@@ -11,7 +11,8 @@ param(
     [ValidateSet("auto", "hevc", "h264", "prores")]
     [string]$Codec = "hevc",
     [switch]$SystemAudio,
-    [int]$MaxRepeatedFrames = 1000
+    [int]$MaxRepeatedFrames = 1000,
+    [int]$MaxAudioDiscontinuities = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,6 +44,9 @@ if ([int]$capture.discardedNonMonotonicFrames -ne 0) {
 if ([int]$capture.repeatedFrames -gt $MaxRepeatedFrames) {
     throw "重复帧超出阈值：$($capture.repeatedFrames) > $MaxRepeatedFrames"
 }
+if ($SystemAudio -and [int]$capture.systemAudioDiscontinuities -gt $MaxAudioDiscontinuities) {
+    throw "系统音频 discontinuity 超出阈值：$($capture.systemAudioDiscontinuities) > $MaxAudioDiscontinuities"
+}
 
 $probeText = (& ffprobe -v error -show_streams -show_format -of json $mediaPath | Out-String)
 if ($LASTEXITCODE -ne 0) { throw "ffprobe 失败：$probeText" }
@@ -66,6 +70,8 @@ $report = [ordered]@{
         durationSeconds = $DurationSeconds
         codec = $Codec
         systemAudio = [bool]$SystemAudio
+        maxRepeatedFrames = $MaxRepeatedFrames
+        maxAudioDiscontinuities = $MaxAudioDiscontinuities
     }
     encoderEnumeration = $encoderReport
     capture = $capture
