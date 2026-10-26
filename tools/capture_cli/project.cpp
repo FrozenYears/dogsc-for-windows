@@ -578,6 +578,13 @@ RecorderProject apply_edit(const RecorderProject& project, const std::filesystem
         if (count != 1) throw std::invalid_argument("split 需要 output-time");
         result = ProjectTimelineEditing::split_primary_segment(
             project, parse_double(arguments[0], "output-time"), new_uuid(project), duration);
+    } else if (operation == L"remove-zoom" || operation == L"remove-mosaic" || operation == L"remove-sticker") {
+        if (count != 1) throw std::invalid_argument("remove effect 需要 clip-id");
+        const auto id = Uuid::parse(winrt::to_string(arguments[0]));
+        if (!id) throw std::invalid_argument("clip-id 不是有效 UUID");
+        if (operation == L"remove-zoom") result = ProjectTimelineEditing::removing_zoom(project, *id);
+        else if (operation == L"remove-mosaic") result = ProjectTimelineEditing::removing_mosaic(project, *id);
+        else result = ProjectTimelineEditing::removing_sticker(project, *id);
     } else if (operation == L"auto-zoom") {
         if (count != 0 && count != 2) throw std::invalid_argument("auto-zoom 可选 scale 和 transition-duration");
         const auto scale = count >= 1 ? parse_double(arguments[0], "scale") : 1.6;

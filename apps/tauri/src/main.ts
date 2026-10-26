@@ -32,6 +32,11 @@ type ProjectDocument = {
   canvas?: { screenFrame?: string };
   motion?: { screen?: string; cursor?: string };
   openingSequence?: { isEnabled?: boolean; preset?: string; duration?: number };
+  timeline?: {
+    zoomClips?: Array<{ id: string; startTime: number; endTime: number; origin?: string }>;
+    mosaicClips?: Array<{ id: string; timing?: { startTime?: number; duration?: number }; style?: string }>;
+    stickerClips?: Array<{ id: string; timing?: { startTime?: number; duration?: number }; relativePath?: string }>;
+  };
 };
 type ProjectSnapshot = {
   project: ProjectDocument;
@@ -905,6 +910,18 @@ function renderProjectSnapshot() {
     item.addEventListener("click", () => { editSegment.value = segment.id; updateEditorButtons(); });
     timeline.append(item);
   }
+  const addEffectRow = (kind: string, id: string, label: string) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "timeline-effect";
+    item.textContent = `× ${label}`;
+    item.title = "点击移除效果（可撤销）";
+    item.addEventListener("click", () => { void applyProjectEdit(`remove-${kind}`, id); });
+    timeline.append(item);
+  };
+  for (const clip of snapshot.project.timeline?.zoomClips ?? []) addEffectRow("zoom", clip.id, `缩放 ${formatSeconds(clip.startTime)}—${formatSeconds(clip.endTime)}`);
+  for (const clip of snapshot.project.timeline?.mosaicClips ?? []) addEffectRow("mosaic", clip.id, `遮罩 ${clip.style ?? ""}`);
+  for (const clip of snapshot.project.timeline?.stickerClips ?? []) addEffectRow("sticker", clip.id, `贴图 ${clip.relativePath ?? ""}`);
   updateEditorButtons();
 }
 
