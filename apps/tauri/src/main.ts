@@ -898,12 +898,30 @@ function renderProjectSnapshot() {
     editSegment.append(option);
   }
   if (snapshot.segments.some((segment) => segment.id === previous)) editSegment.value = previous;
+  let draggedSegmentID = "";
   timeline.innerHTML = "";
   for (const segment of snapshot.segments) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "timeline-segment";
     item.dataset.segmentId = segment.id;
+    item.draggable = true;
+    item.addEventListener("dragstart", (event) => { draggedSegmentID = segment.id; event.dataTransfer?.setData("text/plain", segment.id); });
+    item.addEventListener("dragend", () => { draggedSegmentID = ""; });
+    item.addEventListener("pointerdown", () => { draggedSegmentID = segment.id; });
+    item.addEventListener("pointerup", () => {
+      const draggedID = draggedSegmentID;
+      draggedSegmentID = "";
+      const targetIndex = snapshot.segments.findIndex((candidate) => candidate.id === segment.id);
+      if (draggedID && draggedID !== segment.id && targetIndex >= 0) void applyProjectEdit("move", draggedID, String(targetIndex));
+    });
+    item.addEventListener("dragover", (event) => { event.preventDefault(); });
+    item.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const draggedID = event.dataTransfer?.getData("text/plain") || draggedSegmentID;
+      const targetIndex = snapshot.segments.findIndex((candidate) => candidate.id === segment.id);
+      if (draggedID && targetIndex >= 0) void applyProjectEdit("move", draggedID, String(targetIndex));
+    });
     item.style.width = `${Math.max(5, (segment.outputEnd - segment.outputStart) / snapshot.outputDuration * 100)}%`;
     item.textContent = `${formatSeconds(segment.outputStart)}—${formatSeconds(segment.outputEnd)}`;
     item.title = segment.id;
@@ -914,6 +932,8 @@ function renderProjectSnapshot() {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "timeline-effect";
+    item.dataset.effectKind = kind;
+    item.dataset.effectId = id;
     item.textContent = `× ${label}`;
     item.title = "点击移除效果（可撤销）";
     item.addEventListener("click", () => { void applyProjectEdit(`remove-${kind}`, id); });

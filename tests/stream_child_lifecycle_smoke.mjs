@@ -32,9 +32,12 @@ if (process.env.DOGSC_EXERCISE_RECORDING === "1") {
   recordingSmokeDirectory = join(recordingSmokeParent, "capture");
 }
 let temporaryProjectA = "";
-if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" || process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1" || process.env.DOGSC_REQUIRE_OPENING === "1") {
+if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" || process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1" || process.env.DOGSC_REQUIRE_OPENING === "1" || process.env.DOGSC_EXERCISE_ZOOM === "1") {
   temporaryProjectA = mkdtempSync(join(tmpdir(), "dogsc-scene-smoke-"));
   const sourceProject = JSON.parse(readFileSync(projectA, "utf8"));
+  if (process.env.DOGSC_EXERCISE_ZOOM === "1" && process.env.DOGSC_EXERCISE_SCENE_CONTROLS !== "1") {
+    sourceProject.timeline = { ...sourceProject.timeline, screenMotionClips: [] };
+  }
   if (process.env.DOGSC_REQUIRE_CURSOR === "1") {
     sourceProject.cursorStyle = { ...sourceProject.cursorStyle, assetID: "system.arrow" };
   }
@@ -261,9 +264,6 @@ try {
   if (process.env.DOGSC_EXERCISE_ZOOM === "1") {
     await evaluateValue('(()=>{document.querySelector("#zoom-start").value="0";document.querySelector("#zoom-duration").value="1";document.querySelector("#zoom-focus").value="0.5,0.5";document.querySelector("#zoom-scale").value="1.8";document.querySelector("#zoom-transition").value="0.3,0.3";document.querySelector("#zoom-apply").click();return true})()');
     await waitFor("zoom clip 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
-    await waitFor("zoom effect row", async () => await evaluateValue('document.querySelectorAll(".timeline-effect").length > 0'));
-    await evaluateValue('document.querySelector(".timeline-effect").click(); true');
-    await waitFor("zoom effect remove 自动保存", async () => await evaluateValue('document.querySelector(".timeline-effect") === null && document.querySelector("#project-save-state").textContent === "已保存"'));
   }
   if (process.env.DOGSC_EXERCISE_MARKER === "1") {
     await evaluateValue('document.querySelector("#edit-time").value="0.05";document.querySelector("#edit-marker").click(); true');

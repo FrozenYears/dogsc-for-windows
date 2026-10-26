@@ -17,7 +17,7 @@
 | Project | 自动保存/关闭确认 | P1b 已验收：native JSON 语义 dirty 判定，clean begin 不伪造 recovery，save/discard 后可继续编辑；Tauri debounce、flush、两次重试，dirty close confirm/cancel；崩溃 draft/recovery manifest 保留 | orchestration/Tauri + project CLI | 两仓库 dirty-state | clean/no-op/recovery 边界、保存失败重试、dirty close cancel/save GUI smoke |
 | Timeline | 分割/裁切/删除 | GUI 已验收 | core + Tauri | 两仓库 timeline controls | 重载后几何一致 |
 | Timeline | 变速 | GUI 已验收 | core + Tauri | xiaoying speed regions | 0.5×…100×边界、音画同步 |
-| Timeline | 重排/吸附 | P1a GUI 已验收重排；吸附未实现 | core + Tauri | adrian timeline drag | 非 no-op 顺序断言、吸附边界 |
+| Timeline | 重排/吸附 | P1a GUI 已验收按钮重排；新增 HTML5 drag/drop 片段重排并复用 native `move` 命令，吸附仍未实现 | core + Tauri | adrian timeline drag | 非 no-op 顺序断言、拖拽重排、吸附边界 |
 | Timeline | 撤销/重做 | P1a GUI 已验收多步 history；关闭恢复未完成 | editor store + project history | 两仓库 command/history | 多步编辑 undo/redo |
 | Timeline | 自动运镜/缩放 | 手动缩放关键帧 UI/native 已接入：开始/时长、焦点 X/Y、缩放倍数、进入/退出缓动持久化到 `timeline.zoomClips`，并通过 D2D GUI smoke；新增 pointer.jsonl 点击聚类 `auto-zoom` native 生成，输出自动 origin、spring clips；打开工程后 editor action buttons 状态刷新已修复；拖拽时间线编辑与完整 AutoZoomPlanner legacy repair 仍未接入 | frame tracks + inspector + ProjectTimelineEditing + pointer track | 两仓库 auto-zoom | zoom/auto-zoom 持久化、spring/缓动、剪切桥接、点击聚类、按钮状态 |
 | Preview | 媒体解码 | P2a 部分已验收：MF SourceReader 首帧、0.1s seek、EOF 明确错误，H.264/HEVC 320×200 CLI smoke；P2b 增加 SourceReader→FrameSceneEvaluator→D2D/WARP 单帧合成并通过 GUI 0s；损坏媒体/音画同步/连续播放未完成 | `tools/capture_cli/frame.cpp` + D2D + Tauri | xiaoying frame source | 首帧、seek、EOF、坏帧 |
