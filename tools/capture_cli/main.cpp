@@ -40,6 +40,7 @@ void usage() {
         "  dogsc_capture project stream <project.json|project-directory> [max-width]\n"
         "  dogsc_capture project stream-window <project.json|project-directory> <max-width> <owner-hwnd>\n"
         "  dogsc_capture project edit <project.json|project-directory> split <output-time>\n"
+        "  dogsc_capture project edit <project.json|project-directory> zoom <start> <duration> <focus-x> <focus-y> <scale> <enter> <exit>\n"
         "  dogsc_capture project edit <project.json|project-directory> trim <segment-id> <left|right> <output-time>\n"
         "  dogsc_capture project edit <project.json|project-directory> remove <segment-id>\n"
         "  dogsc_capture project edit <project.json|project-directory> move <segment-id> <index>\n"

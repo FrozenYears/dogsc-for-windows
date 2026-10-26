@@ -257,6 +257,10 @@ try {
     await evaluateValue('(()=>{const p=document.querySelector("#screen-motion-geometry-visible");p.value="0.5,0.5,1.2,6,-4,0,0.65";p.dispatchEvent(new Event("input",{bubbles:true}));document.querySelector("#screen-motion-apply").click();return true})()');
     await waitFor("screen motion clip 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
   }
+  if (process.env.DOGSC_EXERCISE_ZOOM === "1") {
+    await evaluateValue('(()=>{document.querySelector("#zoom-start").value="0";document.querySelector("#zoom-duration").value="1";document.querySelector("#zoom-focus").value="0.5,0.5";document.querySelector("#zoom-scale").value="1.8";document.querySelector("#zoom-transition").value="0.3,0.3";document.querySelector("#zoom-apply").click();return true})()');
+    await waitFor("zoom clip 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));
+  }
   if (process.env.DOGSC_EXERCISE_MARKER === "1") {
     await evaluateValue('document.querySelector("#edit-time").value="0.05";document.querySelector("#edit-marker").click(); true');
     await waitFor("recording marker 自动保存", async () => await evaluateValue('document.querySelector("#project-save-state").textContent === "已保存"'));

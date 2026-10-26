@@ -139,6 +139,7 @@ app.innerHTML = `
               <div class="inspector-section"><div class="inspector-heading"><strong>画面</strong><button id="style-apply" class="secondary compact" type="button" disabled>应用</button></div><div class="inspector-fields"><label class="field"><span>背景</span><select id="style-background"><option>黑曜石网格</option><option>工程白网格</option><option>暗夜星阵</option><option>建筑极简点</option><option>立体等角网</option></select></label><label class="field"><span>留白</span><input id="style-padding" type="number" min="0" max="1000" step="1" value="100" /></label><label class="field"><span>样机</span><select id="style-screen-frame"><option value="none">无</option><option value="windowDark">深色窗口</option><option value="browserDark">深色浏览器</option><option value="browserLight">浅色浏览器</option><option value="devicePhonePortrait">手机竖屏</option><option value="deviceTabletLandscape">平板横屏</option></select></label><label class="field"><span>屏幕运镜</span><select id="style-screen-motion"><option value="聚焦">聚焦</option><option value="平滑">平滑</option></select></label><label class="field"><span>光标运动</span><select id="style-cursor-motion"><option value="平滑">平滑</option><option value="适中">适中</option><option value="快速">快速</option><option value="无">无</option></select></label><label class="field"><span>摄像头尺寸</span><input id="style-camera-size" type="number" min="0.05" max="1" step="0.01" value="0.29" /></label><label class="field"><span>摄像头形状</span><select id="style-camera-shape"><option value="方形">方形</option><option value="横向">横向</option><option value="纵向">纵向</option><option value="圆形">圆形</option><option value="原始比例">原始比例</option></select></label><label class="camera-hidden-toggle"><input id="style-camera-hidden" type="checkbox" /><span>隐藏摄像头</span></label></div></div>
               <div class="inspector-section"><div class="inspector-heading"><strong>开场</strong></div><div class="inspector-fields"><label class="camera-hidden-toggle"><input id="style-opening-enabled" type="checkbox" /><span>开场动画</span></label><label class="field"><span>样式</span><select id="style-opening-preset"><option value="轻 3D">轻 3D</option><option value="聚拢">聚拢</option><option value="侧滑">侧滑</option></select></label><label class="field"><span>时长</span><input id="style-opening-duration" type="number" min="0.18" max="10" step="0.1" value="2.2" /></label></div></div>
               <div class="inspector-section"><div class="inspector-heading"><strong>光标</strong></div><div class="inspector-fields"><label class="field"><span>点击效果</span><select id="style-cursor-effect"><option value="ripple">波纹</option><option value="glow">光晕</option><option value="pulse">脉冲</option><option value="burst">爆发</option><option value="none">关闭</option></select></label><label class="field"><span>透明度</span><input id="style-cursor-opacity" type="number" min="0.05" max="1" step="0.05" value="0.8" /></label><label class="field"><span>缩放</span><input id="style-cursor-scale" type="number" min="0.4" max="3" step="0.1" value="1" /></label><label class="field"><span>尺寸</span><input id="style-cursor-size" type="number" min="0.25" max="6" step="0.05" value="1.25" /></label></div></div>
+              <div class="inspector-section"><div class="inspector-heading"><strong>缩放</strong><button id="zoom-apply" class="secondary compact" type="button" disabled>添加</button></div><div class="inspector-fields"><label class="field"><span>开始</span><input id="zoom-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="zoom-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>焦点 X/Y</span><input id="zoom-focus" type="text" value="0.5,0.5" /></label><label class="field"><span>缩放倍数</span><input id="zoom-scale" type="number" min="1" max="8" step="0.1" value="1.6" /></label><label class="field"><span>进入/退出</span><input id="zoom-transition" type="text" value="0.7,0.7" /></label></div></div>
               <div class="inspector-section"><div class="inspector-heading"><strong>遮罩</strong><button id="mosaic-apply" class="secondary compact" type="button" disabled>添加</button></div><div class="inspector-fields"><label class="field"><span>开始</span><input id="mosaic-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="mosaic-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>样式</span><select id="mosaic-style"><option value="blur">模糊</option><option value="spotlight">聚光</option></select></label><label class="field"><span>强度</span><input id="mosaic-intensity" type="number" min="0" max="1" step="0.05" value="0.55" /></label><label class="field"><span>X/Y/W/H</span><input id="mosaic-rect" type="text" value="0.35,0.39,0.30,0.22" /></label></div></div>
               <div class="inspector-section"><div class="inspector-heading"><strong>贴图</strong><button id="sticker-apply" class="secondary compact" type="button" disabled>添加</button></div><div class="inspector-fields"><label class="field"><span>相对路径</span><input id="sticker-path" type="text" spellcheck="false" placeholder="assets/logo.png" /></label><label class="field"><span>开始</span><input id="sticker-start" type="number" min="0" step="0.01" value="0" /></label><label class="field"><span>时长</span><input id="sticker-duration" type="number" min="0.01" step="0.01" value="1" /></label><label class="field"><span>X/Y/W</span><input id="sticker-geometry" type="text" value="0.5,0.5,0.38" /></label></div></div>
             </aside>
@@ -244,6 +245,12 @@ const mosaicStyle = $("mosaic-style") as HTMLSelectElement;
 const mosaicIntensity = $("mosaic-intensity") as HTMLInputElement;
 const mosaicRect = $("mosaic-rect") as HTMLInputElement;
 const mosaicApply = $("mosaic-apply") as HTMLButtonElement;
+const zoomStart = $("zoom-start") as HTMLInputElement;
+const zoomDuration = $("zoom-duration") as HTMLInputElement;
+const zoomFocus = $("zoom-focus") as HTMLInputElement;
+const zoomScale = $("zoom-scale") as HTMLInputElement;
+const zoomTransition = $("zoom-transition") as HTMLInputElement;
+const zoomApply = $("zoom-apply") as HTMLButtonElement;
 const stickerPath = $("sticker-path") as HTMLInputElement;
 const stickerStart = $("sticker-start") as HTMLInputElement;
 const stickerDuration = $("sticker-duration") as HTMLInputElement;
@@ -923,6 +930,7 @@ function updateEditorButtons() {
   styleApply.disabled = !hasProject || projectCommandBusy;
   screenMotionApply.disabled = !hasProject || projectCommandBusy;
   editMarker.disabled = !hasProject || projectCommandBusy;
+  zoomApply.disabled = !hasProject || projectCommandBusy;
   mosaicApply.disabled = !hasProject || projectCommandBusy;
   stickerApply.disabled = !hasProject || projectCommandBusy;
   const dirty = snapshot?.session?.dirty ?? false;
@@ -1040,6 +1048,7 @@ function applyLocale(locale: string) {
   } : {
     "Memo": "备忘录", "Write a note for this project…": "记录这个工程的想法……", "Auto-save": "自动保存", "Clear": "清空", "Permission guide": "权限向导", "Windows returns permissions when capture devices are used. This guide checks enumeration and opens system settings.": "Windows 会在首次使用对应采集设备时返回权限结果。这里先检查可枚举能力，并提供对应系统设置入口。", "Screen / window capture": "屏幕 / 窗口采集", "Not checked": "未检查", "Check again": "重新检查", "Camera": "摄像头", "Microphone": "麦克风", "Checked on first use": "首次使用时检查", "Open settings": "打开设置", "Done": "完成", "Settings": "设置", "Interface language": "界面语言", "Default frame rate": "默认帧率", "Default output directory": "默认输出目录", "Runtime capabilities": "运行时能力", "Check capture capabilities": "检查采集能力", "Open Windows privacy settings": "打开 Windows 隐私设置", "Preferences are stored locally": "偏好设置保存在本机"
   });
+  Object.assign(visibleText, english ? { "缩放": "Zoom", "焦点 X/Y": "Focus X/Y", "缩放倍数": "Zoom scale", "进入/退出": "Enter / exit", "添加": "Add" } : { "Zoom": "缩放", "Focus X/Y": "焦点 X/Y", "Zoom scale": "缩放倍数", "Enter / exit": "进入/退出", "Add": "添加" });
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
   for (let node = walker.nextNode(); node; node = walker.nextNode()) textNodes.push(node as Text);
@@ -1365,6 +1374,17 @@ async function applyScreenMotion() {
   await applyProjectEdit("screen-motion", screenMotionStart.value, screenMotionDuration.value,
     ...values.map((value) => String(value)));
 }
+async function applyZoom() {
+  if (!projectFile) return;
+  const focus = zoomFocus.value.split(",").map((value) => Number(value.trim()));
+  const transition = zoomTransition.value.split(",").map((value) => Number(value.trim()));
+  if (focus.length !== 2 || transition.length !== 2 || [...focus, ...transition].some((value) => !Number.isFinite(value))) {
+    projectLog("缩放焦点必须是 x,y，进入/退出必须是 duration,duration", false);
+    return;
+  }
+  await applyProjectEdit("zoom", zoomStart.value, zoomDuration.value, ...focus.map(String), zoomScale.value, ...transition.map(String));
+}
+
 
 async function applyMosaic() {
   if (!projectFile) return;
@@ -1487,6 +1507,7 @@ projectExportPath.addEventListener("input", updateEditorButtons);
 projectExport.addEventListener("click", () => { void exportProject(); });
 projectExportCancel.addEventListener("click", () => { void cancelProjectExport(); });
 styleApply.addEventListener("click", () => { void applyProjectStyles(); });
+zoomApply.addEventListener("click", () => { void applyZoom(); });
 mosaicApply.addEventListener("click", () => { void applyMosaic(); });
 screenMotionApply.addEventListener("click", () => { void applyScreenMotion(); });
 editMarker.addEventListener("click", () => { void applyMarker(); });
