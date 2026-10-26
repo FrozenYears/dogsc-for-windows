@@ -45,6 +45,7 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 | [docs/16-open-questions.md](docs/16-open-questions.md) | 已决议的开放项记录 |
 | [docs/17-majority-migration-plan.md](docs/17-majority-migration-plan.md) | 复审确认的大部分功能迁移路线与停止标准 |
 | [docs/18-feature-matrix.md](docs/18-feature-matrix.md) | 原版功能、当前状态、目标模块与验收矩阵 |
+| [docs/20-acceptance-runbook.md](docs/20-acceptance-runbook.md) | Windows 实际构建、CLI、GUI、长时矩阵与发布验收步骤 |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | 两个参考仓库的来源、许可证与禁止复制边界 |
 | [docs/10-plan-r1.md](docs/10-plan-r1.md) | 初版方案（已被 15 取代，保留作决策留痕） |
 
