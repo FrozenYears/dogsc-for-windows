@@ -1,6 +1,6 @@
 #include "commands.hpp"
 
-#include <array>
+#include <cmath>
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -59,6 +59,93 @@ TimeInterval full_source_duration(const RecorderProject& project) {
         throw std::runtime_error("屏幕媒体时长无效");
     }
     return duration;
+}
+
+Uuid new_uuid(const RecorderProject& project);
+std::string edit_error_message(const ProjectTimelineEditingError& error);
+
+struct AutoZoomClick {
+    double time = 0;
+    NormalizedPoint location{};
+};
+
+std::vector<AutoZoomClick> read_clicks(const RecorderProject& project,
+                                       const std::filesystem::path& project_path) {
+    if (!project.media || !project.media->pointer_events) return {};
+    const auto path = project_path.parent_path() / project.media->pointer_events->relative_path;
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("无法打开指针轨: " + path.string());
+    std::vector<AutoZoomClick> clicks;
+    std::string line;
+    while (std::getline(input, line)) {
+        if (line.empty()) continue;
+        const auto value = json::parse(line, nullptr, false);
+        if (value.is_discarded()) throw std::runtime_error("指针轨包含无效 JSON");
+        const auto kind = value.value("kind", "");
+        if (kind != "leftClick" && kind != "rightClick") continue;
+        if (!value.contains("time") || !value.contains("location")) continue;
+        const auto& location = value.at("location");
+        AutoZoomClick click{value.at("time").get<double>(),
+            {location.value("x", 0.5), location.value("y", 0.5)}};
+        if (std::isfinite(click.time) && std::isfinite(click.location.x) &&
+            std::isfinite(click.location.y)) clicks.push_back(click);
+    }
+    std::sort(clicks.begin(), clicks.end(), [](const auto& left, const auto& right) {
+        return left.time < right.time;
+    });
+    return clicks;
+}
+
+RecorderProject make_auto_zoom_project(const RecorderProject& project,
+                                       const std::filesystem::path& project_path,
+                                       double scale, double transition) {
+    const auto duration = full_source_duration(project);
+    const auto clicks = read_clicks(project, project_path);
+    auto output = project;
+    if (clicks.empty()) return output;
+    scale = std::clamp(scale, 1.0, 8.0);
+    transition = std::clamp(transition, 0.0, 5.0);
+    std::vector<std::vector<AutoZoomClick>> groups;
+    for (const auto& click : clicks) {
+        if (!groups.empty()) {
+            const auto& previous = groups.back().back();
+            if (click.time - previous.time <= 1.4 &&
+                std::hypot(click.location.x - previous.location.x,
+                           click.location.y - previous.location.y) <= 0.35) {
+                groups.back().push_back(click);
+                continue;
+            }
+        }
+        groups.push_back({click});
+    }
+    double earliest_start = 0;
+    for (const auto& group : groups) {
+        if (group.empty()) continue;
+        NormalizedPoint focus{};
+        for (const auto& click : group) { focus.x += click.location.x; focus.y += click.location.y; }
+        focus.x = std::clamp(focus.x / group.size(), 0.12, 0.88);
+        focus.y = std::clamp(focus.y / group.size(), 0.12, 0.88);
+        const auto start = std::max({group.front().time - transition * 0.18, earliest_start, 0.0});
+        const auto end = std::min(duration, std::max(group.back().time + 0.9, start + transition));
+        if (end <= start + 0.001) continue;
+        ZoomClip clip;
+        clip.id = new_uuid(output);
+        clip.start_time = start;
+        clip.end_time = end;
+        clip.scale = scale;
+        clip.focus = focus;
+        clip.origin = ZoomKeyframeOrigin::kAutomatic;
+        clip.easing = ZoomEasingPreset::kSpring;
+        clip.enter_duration = std::min(transition, clip.duration());
+        clip.exit_duration = std::min(transition, clip.duration());
+        const auto result = ProjectTimelineEditing::inserting_zoom(output, clip);
+        if (const auto* error = std::get_if<ProjectTimelineEditingError>(&result)) {
+            throw std::runtime_error(edit_error_message(*error));
+        }
+        output = std::get<RecorderProject>(result);
+        earliest_start = clip.effect_end_time() + 0.000001;
+    }
+    return output;
 }
 
 Uuid new_uuid(const RecorderProject& project) {
@@ -459,19 +546,21 @@ RecorderProject apply_style(const RecorderProject& project, std::wstring_view st
     return output;
 }
 
-RecorderProject apply_edit(const RecorderProject& project, std::wstring_view operation,
-                           int count, wchar_t** arguments);
-RecorderProject apply_project_operation(const RecorderProject& project, std::wstring_view operation,
-                                        int count, wchar_t** arguments) {
+RecorderProject apply_edit(const RecorderProject& project, const std::filesystem::path& project_path,
+                           std::wstring_view operation, int count, wchar_t** arguments);
+RecorderProject apply_project_operation(const RecorderProject& project,
+                                        const std::filesystem::path& project_path,
+                                        std::wstring_view operation, int count, wchar_t** arguments) {
     if (operation == L"style") {
         if (count < 1) throw std::invalid_argument("style 缺少子操作");
         return apply_style(project, arguments[0], count - 1, arguments + 1);
     }
-    return apply_edit(project, operation, count, arguments);
+    return apply_edit(project, project_path, operation, count, arguments);
 }
 
-RecorderProject apply_edit(const RecorderProject& project, std::wstring_view operation,
-                           int count, wchar_t** arguments) {
+
+RecorderProject apply_edit(const RecorderProject& project, const std::filesystem::path& project_path,
+                           std::wstring_view operation, int count, wchar_t** arguments) {
     const auto duration = full_source_duration(project);
     if (count < 1) throw std::invalid_argument("项目 edit 缺少操作参数");
     auto result = ProjectTimelineEditResult{};
@@ -489,6 +578,11 @@ RecorderProject apply_edit(const RecorderProject& project, std::wstring_view ope
         if (count != 1) throw std::invalid_argument("split 需要 output-time");
         result = ProjectTimelineEditing::split_primary_segment(
             project, parse_double(arguments[0], "output-time"), new_uuid(project), duration);
+    } else if (operation == L"auto-zoom") {
+        if (count != 0 && count != 2) throw std::invalid_argument("auto-zoom 可选 scale 和 transition-duration");
+        const auto scale = count >= 1 ? parse_double(arguments[0], "scale") : 1.6;
+        const auto transition = count == 2 ? parse_double(arguments[1], "transition-duration") : 0.7;
+        return make_auto_zoom_project(project, project_path, scale, transition);
     } else if (operation == L"zoom") {
         if (count != 7) throw std::invalid_argument("zoom 需要 start、duration、focus-x、focus-y、scale、enter、exit");
         ZoomClip clip;
@@ -604,7 +698,7 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
         ensure_draft(normalized_path);
         const auto draft = read_draft(normalized_path);
         const auto duration = full_source_duration(draft);
-        const auto edited = apply_project_operation(draft, arguments[0], argument_count - 1, arguments + 1);
+        const auto edited = apply_project_operation(draft, normalized_path, arguments[0], argument_count - 1, arguments + 1);
         write_draft(normalized_path, edited);
         auto output = snapshot(edited, duration);
         attach_history(output, normalized_path);
@@ -658,7 +752,7 @@ int project_command(const std::filesystem::path& project_path, std::wstring_view
     }
     if (action != L"edit") throw std::invalid_argument("项目动作仅支持 inspect/edit/undo/redo/rename/begin/edit-draft/save/discard");
     if (argument_count < 1) throw std::invalid_argument("edit 缺少操作");
-    const auto edited = apply_project_operation(project, arguments[0], argument_count - 1, arguments + 1);
+    const auto edited = apply_project_operation(project, normalized_path, arguments[0], argument_count - 1, arguments + 1);
     commit_project(normalized_path, edited);
     auto output = snapshot(edited, duration);
     attach_history(output, normalized_path);
