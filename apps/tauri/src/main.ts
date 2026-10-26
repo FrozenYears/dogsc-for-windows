@@ -1026,8 +1026,41 @@ function applyLocale(locale: string) {
     start: "开始录制", pause: "暂停", stop: "停止并保存", "project-open": "打开", "project-rename": "重命名", "library-refresh": "刷新", "project-preview-frame": "预览当前帧", "project-preview-play": "播放", "project-save": "保存", "project-discard": "放弃", "project-undo": "撤销", "project-redo": "重做", "project-export": "导出", "project-export-cancel": "取消", "edit-split": "分割", "edit-trim-left": "左裁切", "edit-trim-right": "右裁切", "edit-rate-button": "应用速度", "edit-move-up": "上移", "edit-move-down": "下移", "edit-remove": "删除", "style-apply": "应用", "mosaic-apply": "添加", "sticker-apply": "添加", "screen-motion-apply": "添加运镜", "edit-marker": "标记"
   };
   for (const [id, buttonLabel] of Object.entries(buttonText)) { const element = document.getElementById(id); if (element) element.textContent = buttonLabel; }
+  const paused = pause.dataset.paused === "true";
+  pause.textContent = paused ? (english ? "Resume" : "继续") : (english ? "Pause" : "暂停");
   const toggleLabels = english ? ["System audio", "Microphone", "Camera"] : ["系统声音", "麦克风", "摄像头"];
   document.querySelectorAll<HTMLElement>(".toggle-row label").forEach((label, index) => { const caption = label.querySelector<HTMLElement>("span:last-child"); if (caption) caption.textContent = toggleLabels[index] ?? caption.textContent; });
+  const visibleText = english ? {
+    "未打开工程": "No project", "编辑": "Edit", "录制": "Record", "素材": "Assets", "录制设置": "Recording settings", "打开 project.json 或工程目录": "Open project.json or project directory", "裁切": "Trim", "适应": "Fit", "未打开": "Not open", "工程名称": "Project name", "项目": "Projects", "刷新后列出工程": "Refresh to list projects", "画面": "Canvas", "开场": "Opening", "画布": "Canvas", "效果": "Effects", "光标": "Cursor", "遮罩": "Mask", "贴图": "Sticker", "时间线": "Timeline", "当前片段": "Current segment", "速度": "Speed", "格式": "Format", "MP4 视频": "MP4 video", "M4A 音频": "M4A audio", "导出": "Export", "播放控制在时间线": "Playback controls are in the timeline", "未加载预览": "Preview not loaded", "— 片段": "— segments", "保存状态在窗口顶部": "Save state is shown above", "运镜": "Motion", "等待打开工程……": "Waiting for a project…", "选择区域": "Pick region", "手动停止": "Manual stop"
+  } : {
+    "No project": "未打开工程", "Edit": "编辑", "Record": "录制", "Assets": "素材", "Recording settings": "录制设置", "Open project.json or project directory": "打开 project.json 或工程目录", "Trim": "裁切", "Fit": "适应", "Not open": "未打开", "Project name": "工程名称", "Projects": "项目", "Refresh to list projects": "刷新后列出工程", "Canvas": "画面", "Opening": "开场", "Effects": "效果", "Cursor": "光标", "Mask": "遮罩", "Sticker": "贴图", "Timeline": "时间线", "Current segment": "当前片段", "Speed": "速度", "Format": "格式", "MP4 video": "MP4 视频", "M4A audio": "M4A 音频", "Export": "导出", "Playback controls are in the timeline": "播放控制在时间线", "Preview not loaded": "未加载预览", "— segments": "— 片段", "Save state is shown above": "保存状态在窗口顶部", "Motion": "运镜", "Waiting for a project…": "等待打开工程……", "Pick region": "选择区域", "Manual stop": "手动停止"
+  };
+  Object.assign(visibleText, english ? {
+    "备忘录": "Memo", "记录这个工程的想法……": "Write a note for this project…", "自动保存": "Auto-save", "清空": "Clear", "权限向导": "Permission guide", "Windows 会在首次使用对应采集设备时返回权限结果。这里先检查可枚举能力，并提供对应系统设置入口。": "Windows returns permissions when capture devices are used. This guide checks enumeration and opens system settings.", "屏幕 / 窗口采集": "Screen / window capture", "未检查": "Not checked", "重新检查": "Check again", "摄像头": "Camera", "麦克风": "Microphone", "首次使用时检查": "Checked on first use", "打开设置": "Open settings", "完成": "Done", "设置": "Settings", "界面语言": "Interface language", "默认帧率": "Default frame rate", "默认输出目录": "Default output directory", "运行时能力": "Runtime capabilities", "检查采集能力": "Check capture capabilities", "打开 Windows 隐私设置": "Open Windows privacy settings", "偏好设置保存在本机": "Preferences are stored locally"
+  } : {
+    "Memo": "备忘录", "Write a note for this project…": "记录这个工程的想法……", "Auto-save": "自动保存", "Clear": "清空", "Permission guide": "权限向导", "Windows returns permissions when capture devices are used. This guide checks enumeration and opens system settings.": "Windows 会在首次使用对应采集设备时返回权限结果。这里先检查可枚举能力，并提供对应系统设置入口。", "Screen / window capture": "屏幕 / 窗口采集", "Not checked": "未检查", "Check again": "重新检查", "Camera": "摄像头", "Microphone": "麦克风", "Checked on first use": "首次使用时检查", "Open settings": "打开设置", "Done": "完成", "Settings": "设置", "Interface language": "界面语言", "Default frame rate": "默认帧率", "Default output directory": "默认输出目录", "Runtime capabilities": "运行时能力", "Check capture capabilities": "检查采集能力", "Open Windows privacy settings": "打开 Windows 隐私设置", "Preferences are stored locally": "偏好设置保存在本机"
+  });
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) textNodes.push(node as Text);
+  for (const node of textNodes) {
+    const original = node.nodeValue ?? "";
+    const trimmed = original.trim();
+    const replacement = visibleText[trimmed as keyof typeof visibleText];
+    if (replacement) node.nodeValue = original.replace(trimmed, replacement);
+  }
+  if (captureMode.options.length >= 2) {
+    captureMode.options[0].text = english ? "Display" : "显示器";
+    captureMode.options[1].text = english ? "Window" : "窗口";
+  }
+  if (codec.options.length >= 4) {
+    codec.options[0].text = english ? "Auto" : "自动选择";
+    codec.options[1].text = "HEVC";
+    codec.options[2].text = "H.264";
+    codec.options[3].text = "ProRes 422";
+  }
+  region.placeholder = english ? "Full display" : "整块显示器";
+  duration.placeholder = english ? "Manual stop" : "手动停止";
   const railLabels = Array.from(document.querySelectorAll<HTMLElement>(".rail-item span:last-child"));
   if (railLabels.length >= 3) ["录制", english ? "Projects" : "项目", english ? "Assets" : "素材"].forEach((label, index) => { railLabels[index].textContent = english ? ["Record", "Projects", "Assets"][index] : label; });
 }
@@ -1045,6 +1078,7 @@ function openMemo() {
   panel.setAttribute("aria-label", "备忘录");
   panel.innerHTML = `<div class="memo-heading"><strong>备忘录</strong><button type="button" class="icon-button small memo-close">×</button></div><textarea aria-label="备忘录内容" placeholder="记录这个工程的想法……"></textarea><div class="memo-footer"><span class="memo-state">自动保存</span><button type="button" class="secondary compact memo-clear">清空</button></div>`;
   document.body.append(panel);
+  applyLocale(document.documentElement.lang === "en" ? "en-US" : "zh-CN");
   const text = panel.querySelector<HTMLTextAreaElement>("textarea")!;
   const state = panel.querySelector<HTMLElement>(".memo-state")!;
   text.value = localStorage.getItem(memoStorageKey()) ?? "";
@@ -1060,19 +1094,21 @@ function openPermissionWizard() {
   modal.className = "permission-modal-backdrop";
   modal.innerHTML = `<div class="permission-modal" role="dialog" aria-label="权限向导"><div class="region-modal-heading"><strong>权限向导</strong><button type="button" class="icon-button small permission-close">×</button></div><p class="permission-intro">Windows 会在首次使用对应采集设备时返回权限结果。这里先检查可枚举能力，并提供对应系统设置入口。</p><div class="permission-list"><div><strong>屏幕 / 窗口采集</strong><span class="permission-screen-status">未检查</span><button type="button" class="secondary compact permission-screen-check">重新检查</button></div><div><strong>摄像头</strong><span>首次使用时检查</span><button type="button" class="secondary compact permission-open" data-page="ms-settings:privacy-webcam">打开设置</button></div><div><strong>麦克风</strong><span>首次使用时检查</span><button type="button" class="secondary compact permission-open" data-page="ms-settings:privacy-microphone">打开设置</button></div></div><div class="region-modal-footer"><span class="region-readout permission-result"></span><button type="button" class="primary permission-close">完成</button></div></div>`;
   document.body.append(modal);
+  applyLocale(document.documentElement.lang === "en" ? "en-US" : "zh-CN");
   const close = () => modal.remove();
   modal.querySelectorAll(".permission-close").forEach((button) => button.addEventListener("click", close));
   const screenStatus = modal.querySelector<HTMLElement>(".permission-screen-status")!;
   const checkScreen = async () => {
-    screenStatus.textContent = "检查中…";
-    try { const targets = await runCaptureTargets(); screenStatus.textContent = `可用：${targets.monitors.length} 个显示器 / ${targets.windows.length} 个窗口`; }
-    catch (error) { screenStatus.textContent = `失败：${String(error)}`; }
+    screenStatus.textContent = document.documentElement.lang === "en" ? "Checking…" : "检查中…";
+    try { const targets = await runCaptureTargets(); screenStatus.textContent = document.documentElement.lang === "en" ? `Available: ${targets.monitors.length} display(s) / ${targets.windows.length} window(s)` : `可用：${targets.monitors.length} 个显示器 / ${targets.windows.length} 个窗口`; }
+    catch (error) { screenStatus.textContent = document.documentElement.lang === "en" ? `Failed: ${String(error)}` : `失败：${String(error)}`; }
   };
   modal.querySelector(".permission-screen-check")?.addEventListener("click", () => { void checkScreen(); });
   modal.querySelectorAll<HTMLButtonElement>(".permission-open").forEach((button) => button.addEventListener("click", async () => {
     const result = modal.querySelector<HTMLElement>(".permission-result")!;
-    try { await invoke("open_windows_settings", { page: button.dataset.page }); result.textContent = "已打开 Windows 设置"; }
-    catch (error) { result.textContent = `无法打开设置：${String(error)}`; }
+    const english = document.documentElement.lang === "en";
+    try { await invoke("open_windows_settings", { page: button.dataset.page }); result.textContent = english ? "Windows settings opened" : "已打开 Windows 设置"; }
+    catch (error) { result.textContent = english ? `Unable to open settings: ${String(error)}` : `无法打开设置：${String(error)}`; }
   }));
   void checkScreen();
 }
@@ -1093,30 +1129,38 @@ function openSettings() {
   applyLocale(languageInput.value);
   const close = () => modal.remove();
   modal.querySelector(".settings-close")?.addEventListener("click", close);
+  let settingsCheckGeneration = 0;
   modal.querySelector("#settings-permission-wizard")?.addEventListener("click", openPermissionWizard);
   modal.querySelector(".settings-check")?.addEventListener("click", async () => {
+    const request = ++settingsCheckGeneration;
     const result = modal.querySelector<HTMLElement>(".settings-check-result")!;
-    result.textContent = "检查中…";
+    const english = document.documentElement.lang === "en";
+    result.textContent = english ? "Checking…" : "检查中…";
     try {
       const targets = await runCaptureTargets();
-      result.textContent = `可用：${targets.monitors.length} 个显示器，${targets.windows.length} 个窗口`;
+      if (request !== settingsCheckGeneration) return;
+      result.textContent = english ? `Available: ${targets.monitors.length} display(s) / ${targets.windows.length} window(s)` : `可用：${targets.monitors.length} 个显示器，${targets.windows.length} 个窗口`;
     } catch (error) {
-      result.textContent = `检查失败：${String(error)}`;
+      if (request === settingsCheckGeneration) result.textContent = english ? `Check failed: ${String(error)}` : `检查失败：${String(error)}`;
     }
   });
   modal.querySelector(".settings-open-permissions")?.addEventListener("click", async () => {
+    ++settingsCheckGeneration;
     const result = modal.querySelector<HTMLElement>(".settings-check-result")!;
+    const english = document.documentElement.lang === "en";
     try {
       await invoke("open_windows_settings", { page: "ms-settings:privacy" });
-      result.textContent = "已打开 Windows 隐私设置";
+      result.textContent = english ? "Windows privacy settings opened" : "已打开 Windows 隐私设置";
     } catch (error) {
-      result.textContent = `无法打开设置：${String(error)}`;
+      result.textContent = english ? `Unable to open settings: ${String(error)}` : `无法打开设置：${String(error)}`;
     }
   });
   modal.querySelector(".settings-save")?.addEventListener("click", () => {
-    const preferences = { language: languageInput.value, defaultFps: Number(fpsInput.value), directory: directoryInput.value.trim() };
+    const selectedDirectory = directoryInput.value.trim() || directory.value.trim();
+    const preferences = { language: languageInput.value, defaultFps: Number(fpsInput.value), directory: selectedDirectory };
     localStorage.setItem("dogsc.preferences", JSON.stringify(preferences));
     applyLocale(preferences.language);
+    void refreshTargets();
     fps.value = String(preferences.defaultFps);
     if (preferences.directory) { directory.value = preferences.directory; libraryRoot.value = preferences.directory; }
     close();
@@ -1127,18 +1171,19 @@ function openSettings() {
 async function refreshTargets() {
   try {
     const targets = await runCaptureTargets();
+    const english = document.documentElement.lang === "en";
     monitor.replaceChildren();
     for (const item of targets.monitors) {
       const option = document.createElement("option");
       option.value = String(item.index);
-      option.textContent = `${item.primary ? "主显示器" : "显示器"} · ${item.index} · ${item.width}×${item.height}`;
+      option.textContent = `${item.primary ? (english ? "Primary display" : "主显示器") : (english ? "Display" : "显示器")} · ${item.index} · ${item.width}×${item.height}`;
       monitor.append(option);
     }
     windowTarget.replaceChildren();
     for (const item of targets.windows) {
       const option = document.createElement("option");
       option.value = String(item.hwnd);
-      option.textContent = `${item.title}${item.minimized ? " · 最小化" : ""}`;
+      option.textContent = `${item.title}${item.minimized ? (english ? " · Minimized" : " · 最小化") : ""}`;
       windowTarget.append(option);
     }
     if (targets.monitors.length === 0) projectLog("没有可用显示器", false);
@@ -1468,11 +1513,13 @@ void getCurrentWindow().onCloseRequested(async (event) => {
     closeConfirmationInProgress = false;
   }
 });
-void defaultDirectory().then((value) => { const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}"); directory.value = saved.directory ?? value; libraryRoot.value = saved.directory ?? value; if (saved.defaultFps) fps.value = String(saved.defaultFps); applyLocale(saved.language ?? "zh-CN"); });
+void defaultDirectory().then((value) => { const saved = JSON.parse(localStorage.getItem("dogsc.preferences") ?? "{}"); const selectedDirectory = typeof saved.directory === "string" && saved.directory.trim() ? saved.directory.trim() : value; directory.value = selectedDirectory; libraryRoot.value = selectedDirectory; if (saved.defaultFps) fps.value = String(saved.defaultFps); applyLocale(saved.language ?? "zh-CN"); setRecording(false); }).catch((error) => { log(`默认输出目录初始化失败：${String(error)}`); setRecording(false); });
 captureMode.addEventListener("change", updateCaptureMode);
 regionPick.addEventListener("click", openRegionPicker);
 settingsButton.addEventListener("click", openSettings);
 updateCaptureMode();
+setRecording(false);
+directory.addEventListener("input", () => { if (!recordingChild) setRecording(false); });
 void refreshTargets();
 
 
@@ -1486,7 +1533,9 @@ function log(message: string, muted = false) {
 }
 
 function setRecording(active: boolean) {
-  start.disabled = active;
+  start.disabled = active || !directory.value.trim();
+  pause.dataset.paused = "false";
+  pause.textContent = document.documentElement.lang === "en" ? "Pause" : "暂停";
   pause.disabled = !active;
   stop.disabled = !active;
   directory.disabled = active;
@@ -1516,7 +1565,9 @@ function stopTimer() {
 
 start.addEventListener("click", async () => {
   try {
-    const args = ["record", directory.value.trim()];
+    const outputDirectory = directory.value.trim();
+    if (!outputDirectory) throw new Error("请先选择输出目录");
+    const args = ["record", outputDirectory];
     if (captureMode.value === "window") {
       if (!windowTarget.value) throw new Error("没有可用窗口目标");
       args.push("--window", windowTarget.value);
@@ -1554,14 +1605,27 @@ start.addEventListener("click", async () => {
 
 pause.addEventListener("click", async () => {
   if (!recordingChild) return;
-  await recordingChild.write("P\n");
-  pause.textContent = pause.textContent === "暂停" ? "继续" : "暂停";
-  log(pause.textContent === "继续" ? "已请求暂停" : "已请求继续", true);
+  try {
+    await recordingChild.write("P\n");
+  } catch (error) {
+    log(`暂停/继续请求失败：${String(error)}`);
+    return;
+  }
+  const paused = pause.dataset.paused !== "true";
+  pause.dataset.paused = String(paused);
+  const english = document.documentElement.lang === "en";
+  pause.textContent = paused ? (english ? "Resume" : "继续") : (english ? "Pause" : "暂停");
+  log(paused ? "已请求暂停" : "已请求继续", true);
 });
 
 stop.addEventListener("click", async () => {
   if (!recordingChild) return;
   stop.disabled = true;
-  await recordingChild.write("Q\n");
-  log("已请求停止，正在完成并保存分段……", true);
+  try {
+    await recordingChild.write("Q\n");
+    log("已请求停止，正在完成并保存分段……", true);
+  } catch (error) {
+    stop.disabled = false;
+    log(`停止请求失败：${String(error)}`);
+  }
 });

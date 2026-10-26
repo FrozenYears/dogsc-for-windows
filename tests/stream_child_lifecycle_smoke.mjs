@@ -25,6 +25,12 @@ let exportCancelDirectory = "";
 if (process.env.DOGSC_EXERCISE_EXPORT_CANCEL === "1" || process.env.DOGSC_EXERCISE_M4A_EXPORT === "1" || process.env.DOGSC_EXERCISE_M4A_CANCEL === "1") {
   exportCancelDirectory = mkdtempSync(join(tmpdir(), "dogsc-export-smoke-"));
 }
+let recordingSmokeParent = "";
+let recordingSmokeDirectory = "";
+if (process.env.DOGSC_EXERCISE_RECORDING === "1") {
+  recordingSmokeParent = mkdtempSync(join(tmpdir(), "dogsc-recording-smoke-"));
+  recordingSmokeDirectory = join(recordingSmokeParent, "capture");
+}
 let temporaryProjectA = "";
 if (process.env.DOGSC_REQUIRE_CURSOR === "1" || process.env.DOGSC_REQUIRE_STICKERS === "1" || process.env.DOGSC_REQUIRE_SPOTLIGHT === "1" || process.env.DOGSC_REQUIRE_SCREEN_FRAME === "1" || process.env.DOGSC_REQUIRE_OPENING === "1") {
   temporaryProjectA = mkdtempSync(join(tmpdir(), "dogsc-scene-smoke-"));
@@ -206,13 +212,14 @@ try {
     socket.addEventListener("error", rejectSocket, { once: true });
   });
   await waitFor("Tauri 工程控件就绪", async () => await evaluateValue('Boolean(document.querySelector("#project-path") && document.querySelector("#project-preview-play"))'));
+  await waitFor("录制输出目录与开始按钮就绪", async () => await evaluateValue('Boolean(document.querySelector("#directory").value.trim() && document.querySelector("#start").disabled === false)'));
   if (process.env.DOGSC_EXERCISE_SETTINGS === "1") {
     await evaluateValue('document.querySelector("#settings-button").click(); true');
     await waitFor("settings modal 打开", async () => await evaluateValue('Boolean(document.querySelector(".settings-modal"))'));
     await evaluateValue('document.querySelector(".settings-check").click(); true');
     await waitFor("settings capability 检查", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.length > 0'));
     await evaluateValue('document.querySelector(".settings-open-permissions").click(); true');
-    await waitFor("Windows 隐私设置入口", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.includes("已打开")'));
+    await waitFor("Windows 隐私设置入口", async () => await evaluateValue('document.querySelector(".settings-check-result").textContent.includes("已打开") || document.querySelector(".settings-check-result").textContent.includes("privacy settings opened")'));
     await evaluateValue('document.querySelector("#settings-permission-wizard").click(); true');
     await waitFor("权限向导打开", async () => await evaluateValue('Boolean(document.querySelector(".permission-modal"))'));
     await waitFor("权限向导屏幕检查", async () => await evaluateValue('document.querySelector(".permission-screen-status").textContent.length > 0'));
@@ -227,6 +234,14 @@ try {
     await waitFor("language preference persisted", async () => await evaluateValue('document.querySelector(".settings-language").value === "en-US"'));
     await evaluateValue('document.querySelector(".settings-close").click(); true');
     await waitFor("English shell labels", async () => await evaluateValue('document.querySelector("#project-open").textContent === "Open" && document.querySelector("#directory").parentElement.querySelector("span").textContent === "Output directory" && document.querySelector("#memo-button").textContent === "Memo"'));
+  }
+  if (process.env.DOGSC_EXERCISE_RECORDING === "1") {
+    await evaluateValue(`(()=>{const p=document.querySelector("#directory");p.value=${JSON.stringify(recordingSmokeDirectory)};p.dispatchEvent(new Event("input",{bubbles:true}));const d=document.querySelector("#duration");d.value="1";d.dispatchEvent(new Event("input",{bubbles:true}));document.querySelector("#start").click();return true})()`);
+    await waitFor("录制进程启动", async () => await evaluateValue('document.querySelector("#status-text").textContent === "RECORDING IN PROGRESS"'));
+    await waitFor("录制完成并生成 capture.json", async () => existsSync(join(recordingSmokeDirectory, "capture.json")) && await evaluateValue('document.querySelector("#status-text").textContent === "READY TO CAPTURE"'), 30000);
+    const capture = JSON.parse(readFileSync(join(recordingSmokeDirectory, "capture.json"), "utf8"));
+    if (capture.status !== "finalized" || capture.videoFrames <= 0) throw new Error(`GUI 录制产物无效：${JSON.stringify(capture)}`);
+    await waitFor("录制工程自动加载完成", async () => await evaluateValue('document.querySelector("#project-open").disabled === false'));
   }
   if (process.env.DOGSC_EXERCISE_REGION === "1") {
     await evaluateValue('document.querySelector("#region-pick").click(); true');
@@ -402,4 +417,5 @@ try {
   }
   if (temporaryProjectA) rmSync(temporaryProjectA, { recursive: true, force: true });
   if (exportCancelDirectory) rmSync(exportCancelDirectory, { recursive: true, force: true });
+  if (recordingSmokeParent) rmSync(recordingSmokeParent, { recursive: true, force: true });
 }
