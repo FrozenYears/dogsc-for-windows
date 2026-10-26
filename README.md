@@ -6,11 +6,11 @@ DogSC 的 Windows 原生移植。录屏、剪辑、运镜与导出，面向 Wind
 
 ## 状态
 
-**移植进行中：M0 核心基线、M1 原生采集、M2a 离屏渲染、P1a/P1b 项目生命周期、P2a/P2b 预览基础与 P4 视频导出 prototype 已实现。**
+**移植进行中：核心、原生采集、D2D/WARP、项目生命周期、时间线编辑、DXGI/D2D 预览、场景效果、预览音频、MP4/M4A 导出和 Tauri 产品壳已具备可运行切片。**
 
-- 已实现：C++20 工程模型/时间线求值及 JSON；WGC 屏幕与窗口采集、WASAPI、指针轨、可选 MF 摄像头、HEVC/H.264 硬编与 FFmpeg ProRes 422 Standard、10 秒分片及无损合并/恢复；D2D/WARP 六层离屏合成；Tauri 项目库、语义 dirty draft、debounce 自动保存、flush/重试、discard/recovery、关闭确认、时间线编辑与多步历史；MF SourceReader 持久 stream、NV12 DXGI decoder ingress、FrameSceneEvaluator/D2D 实时合成、sidecar DXGI swapchain overlay、实时 pointer.jsonl/cursor click/camera scene 资源、PNG fallback/static composite；单源 H.264 MP4 export prototype。
-- 已验证：Windows Release clean build；7/7 CTest；H.264/HEVC frame/seek/stream/EOF/D2D composite；真实 GUI dirty close/cancel/retry；跨工程 child 回收。打包 GUI D2D/DXGI camera smoke：960×600、45fps、30/30 frames、0 drops；cursor/click smoke：960×600、43fps、30/30 frames、0 drops；两者均报告 DXGI swapchain 与 vblank；这是短样本，不代表长时60Hz/no-tear验收。
-- 尚未完成：SourceReader NV12 texture 仍 staging-readback→CPU YUV→BGRA upload 到 D2D 输入（D2D 输出纹理通过同设备 `CopyResource` 直达 swapchain；非零拷贝）；实时与单源 H.264 export 已接入 camera/cursor/sticker/spotlight、edited video TimelineMediaPlan、system audio AAC、独立 M4A CLI/Tauri GUI、progress JSON、partial 原子收尾和 Tauri 取消按钮，screen-frame/opening 与 screen/cursor motion editor controls 已通过 smoke；实时 cursor 仍是单一箭头 fallback，贴图更多格式/导入 UI、wallpaper 外部资源、screen 3D 透视控件和完整像素对拍未完成；预览 stream 统一时间线仍在接入，麦克风真实资产 smoke、多轨音频、M4A 取消/失败恢复/重试、PresentMon/capture-based no-tear、长时60Hz/120Hz/VRR/多 GPU/最小化/DPI 验收、长时 drop<2% 与完整拖动/暂停语义；区域拖拽选择、权限/设置/托盘/语言/录制标记；长时4K60/跨设备与 FFmpeg LGPL 分发合规。
+- 当前已实现：WGC 屏幕/窗口采集、WASAPI、指针轨、可选摄像头、HEVC/H.264、ProRes 422、10 秒分片恢复；TimelineMap/TimelineMediaPlan；dirty draft/自动保存/恢复/撤销重做；D2D 六层合成；DXGI swapchain 预览；cursor/click/camera/sticker/mosaic/spotlight/screen-frame/opening/screen-motion/手动与点击自动缩放；MP4/M4A 导出与取消清理；设置、权限向导、托盘、备忘录、区域选择器和运行时中英文壳。
+- 当前已验证：Release clean build、7/7 CTest、H.264/HEVC frame/seek/stream/EOF/D2D composite、真实 GUI 录制/暂停/继续/停止、预览音频时钟、DXGI move/resize/occlusion、自动缩放和 A/B child lifecycle。
+- 当前未完成：完整 AutoZoomPlanner legacy repair、时间线拖拽编辑、完整本地化、逐像素基准、麦克风多轨长时同步、120Hz/VRR/多 GPU/实际无撕裂、4K60/跨硬件、FFmpeg 最终法律审查。详见 `docs/18-feature-matrix.md` 与 `docs/20-acceptance-runbook.md`。
 
 ## 决策基线
 
@@ -79,7 +79,7 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-安装包位于 `apps/tauri/src-tauri/target/release/bundle/nsis/`。当前界面可以配置显示器、帧率、编码器、系统声音、麦克风、摄像头和输出目录，并通过 sidecar 启动/暂停/继续/停止 C++ 原生采集。它还不是完整编辑器；项目库、时间线编辑、实时预览和最终导出仍未接入。
+安装包位于 `apps/tauri/src-tauri/target/release/bundle/nsis/`。当前壳包含录制、暂停/继续/停止、项目库、时间线编辑、场景检查器、DXGI/D2D 预览、预览音频、MP4/M4A 导出、设置/权限向导、托盘、备忘录、区域选择器、语言切换和缩放关键帧。使用 `docs/20-acceptance-runbook.md` 进行用户侧验收。
 
 详细说明见 [`apps/tauri/README.md`](apps/tauri/README.md)。
 
